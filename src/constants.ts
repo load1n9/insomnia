@@ -1,7 +1,7 @@
-import { TOPIC, RECORD_ACTION, PRESENCE_ACTION, RPC_ACTION } from '@deepstream/protobuf/dist/types/all'
+import { TOPIC, RECORD_ACTION, PRESENCE_ACTION, RPC_ACTION } from '../types/all.ts'
 
-export * from '@deepstream/protobuf/dist/types/all'
-export * from '@deepstream/protobuf/dist/types/messages'
+export * from '../types/all.ts'
+export * from '../types/messages.ts'
 
 export const RESPONSE_TO_REQUEST: { [topic: number]: { [action: number]: RECORD_ACTION | PRESENCE_ACTION | RPC_ACTION } } = {
     [TOPIC.RECORD]: {

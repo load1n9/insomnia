@@ -1,14 +1,14 @@
-import { CONNECTION_STATE, EVENT, JSONObject, TOPIC, Message, CONNECTION_ACTION, ParseResult, PARSER_ACTION, AUTH_ACTION } from '../constants'
+// deno-lint-ignore-file ban-types no-explicit-any
+import { CONNECTION_STATE, EVENT, JSONObject, TOPIC, Message, CONNECTION_ACTION, ParseResult, PARSER_ACTION, AUTH_ACTION } from '../constants.ts'
 import {
   parseData
-} from '@deepstream/protobuf/dist/src/message-parser'
+} from '../../protobuf/message-parser.ts'
 
-import { StateMachine } from '../util/state-machine'
-import {Services, Socket} from '../deepstream-client'
-import { Options } from '../client-options'
-import * as utils from '../util/utils'
-import { Emitter } from '../util/emitter'
-import * as pkg from '../../package.json'
+import { StateMachine } from '../util/state-machine.ts'
+import {Services, Socket} from '../deepstream-client.ts'
+import { Options } from '../client-options.ts'
+import * as utils from '../util/utils.ts'
+import { Emitter } from '../util/emitter.ts'
 
 export type AuthenticationCallback = (success: boolean, clientData: JSONObject | null) => void
 export type ResumeCallback = (error?: JSONObject) => void
@@ -212,7 +212,6 @@ export class Connection {
     }
 
     if (authParamsOrCallback) {
-      // @ts-ignore
       this.authParams = typeof authParamsOrCallback === 'object' ? authParamsOrCallback : {}
     }
 
@@ -310,7 +309,7 @@ export class Connection {
       action: CONNECTION_ACTION.CHALLENGE,
       url: this.originalUrl,
       protocolVersion: '0.1a',
-      sdkVersion: pkg.version,
+      sdkVersion: "0.1a",
       sdkType: 'javascript'
     })
     this.stateMachine.transition(TRANSITIONS.CHALLENGE)

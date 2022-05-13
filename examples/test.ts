@@ -1,12 +1,4 @@
-# Insomnia
-
-deepstream.io client deno wrapper
-
-# install
-install the server from [here](https://github.com/deepstreamIO/deepstream.io/releases)
-# usage
-```ts
-import { DeepstreamClient } from "https://deno.land/x/insomnia/mod.ts";
+import { DeepstreamClient } from "../mod.ts";
 
 const client = new DeepstreamClient("localhost:6020");
 client.login({ username: "peter", password: "sesame" }, (success, data) => {
@@ -18,4 +10,3 @@ client.login({ username: "peter", password: "sesame" }, (success, data) => {
     console.log(value);
   });
 });
-```

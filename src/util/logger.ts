@@ -1,49 +1,76 @@
-import { EVENT } from '../constants'
-import { ALL_ACTIONS, ACTIONS, Message } from '@deepstream/protobuf/dist/types/messages'
-import { TOPIC, JSONObject } from '@deepstream/protobuf/dist/types/all'
-import { Emitter } from './emitter'
+import { EVENT } from "../constants.ts";
+import { ACTIONS, ALL_ACTIONS, Message } from "../../types/messages.ts";
+import { JSONObject, TOPIC } from "../../types/all.ts";
+import { Emitter } from "./emitter.ts";
 
-function isEvent (action: EVENT | ALL_ACTIONS | undefined): boolean {
-  // @ts-ignore
-  return EVENT[action] !== undefined
+// deno-lint-ignore no-explicit-any
+function isEvent(action: any): boolean {
+  // deno-lint-ignore no-explicit-any
+  return (EVENT as any)[action] !== undefined;
 }
 
 export class Logger {
-  constructor (private emitter: Emitter) {
+  constructor(private emitter: Emitter) {
   }
 
-  public warn (message: { topic: TOPIC } | Message, event?: EVENT | ALL_ACTIONS, meta?: any): void {
-    let warnMessage = `Warning: ${TOPIC[message.topic]}`
-    const action = (message as Message).action
+  warn(
+    message: { topic: TOPIC } | Message,
+    event?: EVENT | ALL_ACTIONS,
+    // deno-lint-ignore no-explicit-any
+    meta?: any,
+  ): void {
+    let warnMessage = `Warning: ${TOPIC[message.topic]}`;
+    const action = (message as Message).action;
     if (action) {
-      warnMessage += ` (${(ACTIONS as any)[message.topic][action]})`
+      // deno-lint-ignore no-explicit-any
+      warnMessage += ` (${(ACTIONS as any)[message.topic][action]})`;
     }
     if (event) {
-      warnMessage += `: ${(EVENT as any)[event]}`
+      // deno-lint-ignore no-explicit-any
+      warnMessage += `: ${(EVENT as any)[event]}`;
     }
     if (meta) {
-      warnMessage += ` – ${typeof meta === 'string' ? meta : JSON.stringify(meta)}`
+      warnMessage += ` – ${
+        typeof meta === "string" ? meta : JSON.stringify(meta)
+      }`;
     }
     // tslint:disable-next-line:no-console
-    console.warn(warnMessage)
+    console.warn(warnMessage);
   }
 
-  public error (message: { topic: TOPIC } | Message, event?: EVENT | ALL_ACTIONS, meta?: string | JSONObject | Error): void {
+  error(
+    message: { topic: TOPIC } | Message,
+    // deno-lint-ignore no-explicit-any
+    event?: any,
+    meta?: string | JSONObject | Error,
+  ): void {
     if (isEvent(event)) {
       if (event === EVENT.IS_CLOSED || event === EVENT.CONNECTION_ERROR) {
-        this.emitter.emit('error', meta, EVENT[event], TOPIC[TOPIC.CONNECTION])
+        this.emitter.emit(
+          "error",
+          meta,
+          // deno-lint-ignore no-explicit-any
+          (EVENT as any)[event],
+          TOPIC[TOPIC.CONNECTION],
+        );
       } else {
-        // @ts-ignore
-        this.emitter.emit('error', meta, EVENT[event], TOPIC[message.topic])
+        this.emitter.emit(
+          "error",
+          meta,
+          // deno-lint-ignore no-explicit-any
+          (EVENT as any)[event],
+          TOPIC[message.topic],
+        );
       }
     } else {
-      const action = event ? event : (message as Message).action
+      const action = event ? event : (message as Message).action;
       this.emitter.emit(
-        'error',
+        "error",
         meta || message,
+        // deno-lint-ignore no-explicit-any
         (ACTIONS as any)[message.topic][action],
-        TOPIC[message.topic]
-      )
+        TOPIC[message.topic],
+      );
     }
   }
 }

@@ -1,6 +1,6 @@
-import { Services } from '../deepstream-client'
-import { Options } from '../client-options'
-import { RPCMessage, TOPIC, RPC_ACTION, RPCResult } from '../constants'
+import { Services } from '../deepstream-client.ts'
+import { Options } from '../client-options.ts'
+import { RPCMessage, TOPIC, RPC_ACTION, RPCResult } from '../constants.ts'
 
 /**
  * This class represents a single remote procedure
@@ -15,9 +15,9 @@ export class RPCResponse {
     private isAccepted: boolean
     private isComplete: boolean
 
-    public autoAccept: boolean
+     autoAccept: boolean
 
-    constructor (message: RPCMessage, options: Options, services: Services) {
+    constructor (message: RPCMessage, _options: Options, services: Services) {
         this.name = message.name as string
         this.correlationId = message.correlationId as string
         this.services = services
@@ -32,7 +32,7 @@ export class RPCResponse {
      * will happen implicitly unless the request callback
      * explicitly sets autoAck to false
      */
-    public accept () {
+     accept () {
       if (this.isAccepted === false) {
         this.services.connection.sendMessage({
           topic: TOPIC.RPC,
@@ -51,7 +51,7 @@ export class RPCResponse {
      * another provider - or return a NO_RPC_PROVIDER error if there are no
      * providers left
      */
-    public reject (): void {
+     reject (): void {
       if (this.isComplete === true) {
         throw new Error(`Rpc ${this.name} already completed`)
       }
@@ -70,7 +70,7 @@ export class RPCResponse {
      * Notifies the server that an error has occured while trying to process the request.
      * This will complete the rpc.
      */
-    public error (error: RPCResult): void {
+     error (error: RPCResult): void {
       if (this.isComplete === true) {
         throw new Error(`Rpc ${this.name} already completed`)
       }
@@ -94,7 +94,7 @@ export class RPCResponse {
      * the ack message the request will still be completed and the
      * ack message ignored
      */
-    public send (data: RPCResult): void {
+     send (data: RPCResult): void {
       if (this.isComplete === true) {
         throw new Error(`Rpc ${this.name} already completed`)
       }

@@ -1,18 +1,18 @@
-import { TimerRegistry, TimerRef, Timeout } from '../deepstream-client'
+import { TimerRegistry, TimerRef, Timeout } from '../deepstream-client.ts'
 
 export class NativeTimerRegistry implements TimerRegistry {
     private registry = new Set<number>()
 
-    public close () {
+     close () {
         this.registry.forEach(clearTimeout)
         this.registry.clear()
     }
 
-    public has (timerId: TimerRef): boolean {
+     has (timerId: TimerRef): boolean {
         return this.registry.has(timerId)
     }
 
-    public add (timeout: Timeout): TimerRef {
+     add (timeout: Timeout): TimerRef {
         const id = setTimeout(() => {
             this.remove(id)
             timeout.callback.call(timeout.context, timeout.data)
@@ -21,12 +21,13 @@ export class NativeTimerRegistry implements TimerRegistry {
         return id
     }
 
-    public remove (timerId: TimerRef): boolean {
+     remove (timerId: TimerRef): boolean {
         clearTimeout(timerId)
         return this.registry.delete(timerId)
     }
 
-    public requestIdleCallback (callback: Function): void {
+     // deno-lint-ignore no-explicit-any
+     requestIdleCallback (callback: any): void {
         setTimeout(callback, 0)
     }
 }

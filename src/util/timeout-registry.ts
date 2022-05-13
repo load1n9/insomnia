@@ -1,25 +1,25 @@
-import { Services } from '../deepstream-client'
-import { Options } from '../client-options'
-import { EVENT, RESPONSE_TO_REQUEST } from '../constants'
+import { Services } from "../deepstream-client.ts";
+import { Options } from "../client-options.ts";
+import { EVENT, RESPONSE_TO_REQUEST } from "../constants.ts";
 
-import { Emitter } from '../util/emitter'
-import { RECORD_ACTION, RPC_ACTION } from '@deepstream/protobuf/dist/types/all'
-import { Message } from '@deepstream/protobuf/dist/types/messages'
+import { Emitter } from "../util/emitter.ts";
+import { RECORD_ACTION, RPC_ACTION } from "../../types/all.ts";
+import { Message } from "../../types/messages.ts";
 
-export type TimeoutId = string | null
-export type TimeoutAction = EVENT | RPC_ACTION | RECORD_ACTION
+export type TimeoutId = string | null;
+export type TimeoutAction = EVENT | RPC_ACTION | RECORD_ACTION;
 
 export interface Timeout {
-    event?: TimeoutAction
-    message: Message,
-    callback?: (event: TimeoutAction, message: Message) => void,
-    duration?: number
+  event?: TimeoutAction;
+  message: Message;
+  callback?: (event: TimeoutAction, message: Message) => void;
+  duration?: number;
 }
 
 interface InternalTimeout {
-  timerId: number,
-  uniqueName: string,
-  timeout: Timeout
+  timerId: number;
+  uniqueName: string;
+  timeout: Timeout;
 }
 
 /**
@@ -29,22 +29,22 @@ interface InternalTimeout {
  * their respective timeouts.
  */
 export class TimeoutRegistry extends Emitter {
-  private register: Map<string, InternalTimeout> = new Map()
+  private register: Map<string, InternalTimeout> = new Map();
 
-  constructor (private services: Services, private options: Options) {
-    super()
+  constructor(private services: Services, private options: Options) {
+    super();
   }
 
   /**
    * Add an entry
    */
-  public add (timeout: Timeout): TimeoutId {
+  add(timeout: Timeout): TimeoutId {
     if (timeout.duration === undefined) {
-      timeout.duration = this.options.subscriptionTimeout
+      timeout.duration = this.options.subscriptionTimeout;
     }
 
     if (timeout.event === undefined) {
-      timeout.event = EVENT.ACK_TIMEOUT
+      timeout.event = EVENT.ACK_TIMEOUT;
     }
 
     /*
@@ -55,89 +55,89 @@ export class TimeoutRegistry extends Emitter {
     */
 
     if (!this.services.connection.isConnected) {
-      return null
+      return null;
     }
 
-    this.remove(timeout.message)
+    this.remove(timeout.message);
 
     const internalTimeout: InternalTimeout = {
       timerId: -1,
       uniqueName: this.getUniqueName(timeout.message)!,
       // event: timeout.event,
-      timeout
-    }
+      timeout,
+    };
 
     internalTimeout.timerId = this.services.timerRegistry.add({
-        context: this,
-        callback: this.onTimeout,
-        duration: timeout.duration!,
-        data: internalTimeout
-    })
-    this.register.set(internalTimeout.uniqueName, internalTimeout)
-    return internalTimeout.uniqueName
+      context: this,
+      callback: this.onTimeout,
+      duration: timeout.duration!,
+      data: internalTimeout,
+    });
+    this.register.set(internalTimeout.uniqueName, internalTimeout);
+    return internalTimeout.uniqueName;
   }
 
   /**
    * Remove an entry
    */
-  public remove (message: Message): void {
-    let requestMsg
-    const action = RESPONSE_TO_REQUEST[message.topic][message.action]
+   remove(message: Message): void {
+    let requestMsg;
+    const action = RESPONSE_TO_REQUEST[message.topic][message.action];
     if (!action) {
-      requestMsg = message
+      requestMsg = message;
     } else {
-      requestMsg = { ...message, action }
+      requestMsg = { ...message, action };
     }
-    const uniqueName = this.getUniqueName(requestMsg)
-    this.clear(uniqueName)
+    const uniqueName = this.getUniqueName(requestMsg);
+    this.clear(uniqueName);
   }
 
   /**
    * Processes an incoming ACK-message and removes the corresponding subscription
    */
-  public clear (uniqueName: TimeoutId): void {
-    const timeout = this.register.get(uniqueName!)
+   clear(uniqueName: TimeoutId): void {
+    const timeout = this.register.get(uniqueName!);
     if (timeout) {
-      this.register.delete(uniqueName!)
-      this.services.timerRegistry.remove(timeout.timerId)
+      this.register.delete(uniqueName!);
+      this.services.timerRegistry.remove(timeout.timerId);
     }
   }
 
   /**
    * Will be invoked if the timeout has occured before the ack message was received
    */
-  private onTimeout (internalTimeout: InternalTimeout): void {
-    this.register.delete(internalTimeout.uniqueName)
-    const timeout = internalTimeout.timeout
+  private onTimeout(internalTimeout: InternalTimeout): void {
+    this.register.delete(internalTimeout.uniqueName);
+    const timeout = internalTimeout.timeout;
     if (timeout.callback) {
-      timeout.callback(timeout.event as EVENT, timeout.message)
+      timeout.callback(timeout.event as EVENT, timeout.message);
     } else {
-      this.services.logger.warn(timeout.message, timeout.event)
+      this.services.logger.warn(timeout.message, timeout.event);
     }
   }
 
   /**
    * Returns a unique name from the timeout
    */
-  private getUniqueName (message: Message): TimeoutId {
-    const action = message.originalAction || message.action
+  private getUniqueName(message: Message): TimeoutId {
+    const action = message.originalAction || message.action;
 
-    let name = `${message.topic}${action}_`
+    let name = `${message.topic}${action}_`;
     if (message.correlationId) {
-      name += message.correlationId
+      name += message.correlationId;
     } else if (message.name) {
-      name += message.name
+      name += message.name;
     }
-    return name
+    return name;
   }
 
   /**
    * Remote all timeouts when connection disconnects
    */
-  public onConnectionLost (): void {
-    for (const [ uniqueName, timeout ] of this.register) {
-      this.services.timerRegistry.remove(timeout.timerId)
-      this.register.delete(uniqueName)
+   onConnectionLost(): void {
+    for (const [uniqueName, timeout] of this.register) {
+      this.services.timerRegistry.remove(timeout.timerId);
+      this.register.delete(uniqueName);
     }
   }
 }

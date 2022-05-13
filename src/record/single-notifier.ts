@@ -1,6 +1,7 @@
+// deno-lint-ignore-file no-explicit-any
 
-import { EVENT, Message, RECORD_ACTION, TOPIC } from '../constants'
-import { Services } from '../deepstream-client'
+import { EVENT, Message, RECORD_ACTION, TOPIC } from "../constants.ts";
+import { Services } from "../deepstream-client.ts";
 
 /**
  * Provides a scaffold for subscriptionless requests to deepstream, such as the SNAPSHOT
@@ -14,14 +15,26 @@ import { Services } from '../deepstream-client'
  * @constructor
  */
 export class SingleNotifier<MessageType extends Message> {
-  private requests = new Map<string, Array<(error?: any, result?: any) => void>>()
-  private internalRequests = new Map<string, Array<{ context: any, callback: (message: MessageType) => void }>>()
-  private limboQueue: Message[] = []
+  private requests = new Map<
+    string,
+    Array<(error?: any, result?: any) => void>
+  >();
+  private internalRequests = new Map<
+    string,
+    Array<{ context: any; callback: (message: MessageType) => void }>
+  >();
+  private limboQueue: Message[] = [];
 
-  constructor (private services: Services, private action: RECORD_ACTION.READ | RECORD_ACTION.HEAD, timeoutDuration: number) {
-    this.services.connection.onLost(this.onConnectionLost.bind(this))
-    this.services.connection.onExitLimbo(this.onExitLimbo.bind(this))
-    this.services.connection.onReestablished(this.onConnectionReestablished.bind(this))
+  constructor(
+    private services: Services,
+    private action: RECORD_ACTION.READ | RECORD_ACTION.HEAD,
+    _timeoutDuration: number,
+  ) {
+    this.services.connection.onLost(this.onConnectionLost.bind(this));
+    this.services.connection.onExitLimbo(this.onExitLimbo.bind(this));
+    this.services.connection.onReestablished(
+      this.onConnectionReestablished.bind(this),
+    );
   }
 
   /**
@@ -31,32 +44,32 @@ export class SingleNotifier<MessageType extends Message> {
    * @param {String} name An identifier for the request, e.g. a record name
    * @param {Object} response An object with property `callback` or `resolve` and `reject`
    *
-   * @public
+   * @
    * @returns {void}
    */
-  public request (name: string, callback: (error?: any, result?: any) => void): void {
-    const req = this.requests.get(name)
+  request(name: string, callback: (error?: any, result?: any) => void): void {
+    const req = this.requests.get(name);
     if (req) {
-      req.push(callback)
-      return
+      req.push(callback);
+      return;
     }
 
-    this.requests.set(name, [callback])
+    this.requests.set(name, [callback]);
 
     const message = {
       topic: TOPIC.RECORD,
       action: this.action,
-      name
-    }
+      name,
+    };
 
     if (this.services.connection.isConnected) {
-      this.services.connection.sendMessage(message)
-      this.services.timeoutRegistry.add({ message })
+      this.services.connection.sendMessage(message);
+      this.services.timeoutRegistry.add({ message });
     } else if (this.services.connection.isInLimbo) {
-      this.limboQueue.push(message)
+      this.limboQueue.push(message);
     } else {
-      this.requests.delete(name)
-      callback(EVENT.CLIENT_OFFLINE)
+      this.requests.delete(name);
+      callback(EVENT.CLIENT_OFFLINE);
     }
   }
 
@@ -64,61 +77,65 @@ export class SingleNotifier<MessageType extends Message> {
    * Adds a callback to a (possibly) inflight request that will be called
    * on the response.
    */
-  public register (name: string, context: any, callback: (message: MessageType) => void): void {
-    const request = this.internalRequests.get(name)
+  register(
+    name: string,
+    context: any,
+    callback: (message: MessageType) => void,
+  ): void {
+    const request = this.internalRequests.get(name);
     if (!request) {
-      this.internalRequests.set(name, [{ callback, context }])
+      this.internalRequests.set(name, [{ callback, context }]);
     } else {
-      request.push({ callback, context })
+      request.push({ callback, context });
     }
   }
 
-  public recieve (message: MessageType, error?: any, data?: any): void {
-    this.services.timeoutRegistry.remove(message)
-    const name = message.name!
-    const responses = this.requests.get(name) || []
-    const internalResponses = this.internalRequests.get(name) || []
+  recieve(message: MessageType, error?: any, data?: any): void {
+    this.services.timeoutRegistry.remove(message);
+    const name = message.name!;
+    const responses = this.requests.get(name) || [];
+    const internalResponses = this.internalRequests.get(name) || [];
     if (!responses && !internalResponses) {
-      return
+      return;
     }
 
     for (let i = 0; i < internalResponses.length; i++) {
-      internalResponses[i].callback.call(internalResponses[i].context, message)
+      internalResponses[i].callback.call(internalResponses[i].context, message);
     }
-    this.internalRequests.delete(name)
+    this.internalRequests.delete(name);
 
     // todo we can clean this up and do cb = (error, data) => error ? reject(error) : resolve()
     for (let i = 0; i < responses.length; i++) {
-      responses[i](error, data)
+      responses[i](error, data);
     }
-    this.requests.delete(name)
-    return
+    this.requests.delete(name);
+    return;
   }
 
-  private onConnectionLost (): void {
-    this.requests.forEach(responses => {
-      responses.forEach(response => response(EVENT.CLIENT_OFFLINE))
-    })
-    this.requests.clear()
+  private onConnectionLost(): void {
+    this.requests.forEach((responses) => {
+      responses.forEach((response) => response(EVENT.CLIENT_OFFLINE));
+    });
+    this.requests.clear();
   }
 
-  private onExitLimbo (): void {
+  private onExitLimbo(): void {
     for (let i = 0; i < this.limboQueue.length; i++) {
-      const message = this.limboQueue[i]
-      const requests = this.requests.get(message.name as string)
+      const message = this.limboQueue[i];
+      const requests = this.requests.get(message.name as string);
       if (requests) {
-        requests.forEach(cb => cb(EVENT.CLIENT_OFFLINE))
+        requests.forEach((cb) => cb(EVENT.CLIENT_OFFLINE));
       }
     }
-    this.requests.clear()
-    this.limboQueue = []
+    this.requests.clear();
+    this.limboQueue = [];
   }
 
-  private onConnectionReestablished (): void {
+  private onConnectionReestablished(): void {
     for (let i = 0; i < this.limboQueue.length; i++) {
-      const message = this.limboQueue[i]
-      this.services.connection.sendMessage(message)
-      this.services.timeoutRegistry.add({ message })
+      const message = this.limboQueue[i];
+      this.services.connection.sendMessage(message);
+      this.services.timeoutRegistry.add({ message });
     }
   }
 }

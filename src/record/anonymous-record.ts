@@ -1,150 +1,183 @@
-import * as utils from '../util/utils'
-import { RecordCore, WriteAckCallback } from './record-core'
-import { MergeStrategy } from './merge-strategy'
-import { Emitter } from '../util/emitter'
+// deno-lint-ignore-file no-explicit-any
+import * as utils from "../util/utils.ts";
+import { RecordCore, WriteAckCallback } from "./record-core.ts";
+import { MergeStrategy } from "./merge-strategy.ts";
+import { Emitter } from "../util/emitter.ts";
 
-export class AnonymousRecord extends Emitter  {
-    private record: RecordCore<AnonymousRecord> | null
-    private subscriptions: utils.RecordSubscribeArguments[]
-    private getRecordCore: (recordName: string) => RecordCore<AnonymousRecord>
+export class AnonymousRecord extends Emitter {
+  private record: RecordCore<AnonymousRecord> | null;
+  private subscriptions: utils.RecordSubscribeArguments[];
+  private getRecordCore: (recordName: string) => RecordCore<AnonymousRecord>;
 
-    constructor (getRecordCore: (recordName: string) => RecordCore<AnonymousRecord>) {
-        super()
-        this.record = null
-        this.subscriptions = []
-        this.getRecordCore = getRecordCore
+  constructor(
+    getRecordCore: (recordName: string) => RecordCore<AnonymousRecord>,
+  ) {
+    super();
+    this.record = null;
+    this.subscriptions = [];
+    this.getRecordCore = getRecordCore;
+  }
+
+  get name(): string {
+    if (!this.record) {
+      return "";
+    }
+    return this.record.name;
+  }
+
+  get isReady(): boolean {
+    if (!this.record) {
+      return false;
+    }
+    return this.record.isReady;
+  }
+
+  get version(): number {
+    if (!this.record) {
+      return -1;
+    }
+    return this.record.version as number;
+  }
+
+  whenReady(): Promise<AnonymousRecord>;
+  whenReady(callback: ((record: AnonymousRecord) => void)): void;
+  whenReady(
+    callback?: ((record: AnonymousRecord) => void),
+  ): void | Promise<AnonymousRecord> {
+    if (this.record) {
+      if (callback) {
+        this.record.whenReady(this, callback);
+      } else {
+        return this.record.whenReady(this);
+      }
+    }
+  }
+
+  setName(recordName: string): Promise<AnonymousRecord>;
+  setName(
+    recordName: string,
+    callback: (record: AnonymousRecord) => void,
+  ): void;
+  setName(
+    recordName: string,
+    callback?: (record: AnonymousRecord) => void,
+  ): void | Promise<AnonymousRecord> {
+    if (this.name === recordName) {
+      return;
     }
 
-    get name (): string {
-        if (!this.record) {
-            return ''
-        }
-        return this.record.name
+    this.discard();
+
+    this.record = this.getRecordCore(recordName);
+    this.record.addReference(this);
+
+    for (let i = 0; i < this.subscriptions.length; i++) {
+      this.record.subscribe(this.subscriptions[i], this);
     }
 
-    get isReady (): boolean {
-        if (!this.record) {
-            return false
-        }
-        return this.record.isReady
+    this.emit("nameChanged", recordName);
+
+    if (callback) {
+      this.record.whenReady(this, callback);
+    } else {
+      return this.record.whenReady(this);
     }
+  }
 
-    get version (): number {
-        if (!this.record) {
-            return -1
-        }
-        return this.record.version as number
+  get(path?: string): any {
+    if (this.record) {
+      return this.record.get(path);
     }
+  }
 
-    public whenReady (): Promise<AnonymousRecord>
-    public whenReady (callback: ((record: AnonymousRecord) => void)): void
-    public whenReady (callback?: ((record: AnonymousRecord) => void)): void | Promise<AnonymousRecord> {
-        if (this.record) {
-            if (callback) {
-                this.record.whenReady(this, callback)
-            } else {
-                return this.record.whenReady(this)
-            }
-        }
+  set(data: any, callback?: WriteAckCallback): void;
+  set(_path: string, _data: any, _callback?: WriteAckCallback): void {
+    if (this.record) {
+      return this.record.set(utils.normalizeSetArguments(arguments));
     }
+  }
 
-    public setName (recordName: string): Promise<AnonymousRecord>
-    public setName (recordName: string, callback: (record: AnonymousRecord) => void): void
-    public setName (recordName: string, callback?: (record: AnonymousRecord) => void): void | Promise<AnonymousRecord> {
-        if (this.name === recordName) {
-            return
-        }
-
-        this.discard()
-
-        this.record = this.getRecordCore(recordName)
-        this.record.addReference(this)
-
-        for (let i = 0; i < this.subscriptions.length; i++) {
-          this.record.subscribe(this.subscriptions[i], this)
-        }
-
-        this.emit('nameChanged', recordName)
-
-        if (callback) {
-            this.record.whenReady(this, callback)
-        } else {
-            return this.record.whenReady(this)
-        }
+  setWithAck(
+    data: any,
+    callback?: ((error: string) => void),
+  ): Promise<void> | void;
+  setWithAck(
+    _path: string,
+    _data: any,
+    _callback?: ((error: string) => void),
+  ): Promise<void> | void {
+    if (this.record) {
+      return this.record.setWithAck(utils.normalizeSetArguments(arguments));
     }
+  }
 
-    public get (path?: string): any {
-        if (this.record) {
-            return this.record.get(path)
-        }
+  erase(_path: string): void {
+    if (this.record) {
+      return this.record.set(utils.normalizeSetArguments(arguments));
     }
+  }
 
-    public set (data: any, callback?: WriteAckCallback): void
-    public set (path: string, data: any, callback?: WriteAckCallback): void {
-        if (this.record) {
-            return this.record.set(utils.normalizeSetArguments(arguments))
-        }
+  eraseWithAck(
+    _path: string,
+    _callback?: ((error: string) => void),
+  ): Promise<void> | void {
+    if (this.record) {
+      return this.record.setWithAck(utils.normalizeSetArguments(arguments));
     }
+  }
 
-    public setWithAck (data: any, callback?: ((error: string) => void)): Promise<void> | void
-    public setWithAck (path: string, data: any, callback?: ((error: string) => void)): Promise<void> | void {
-        if (this.record) {
-            return this.record.setWithAck(utils.normalizeSetArguments(arguments))
-        }
+  subscribe(
+    _path: string,
+    _callback: (data: any) => void,
+    _triggerNow?: boolean,
+  ) {
+    const parameters = utils.normalizeArguments(arguments);
+    this.subscriptions.push(parameters);
+    if (this.record) {
+      this.record.subscribe(parameters, this);
     }
+  }
 
-    public erase (path: string): void {
-        if (this.record) {
-            return this.record.set(utils.normalizeSetArguments(arguments))
-        }
+  unsubscribe(_path: string, _callback: (data: any) => void) {
+    const parameters = utils.normalizeArguments(arguments);
+
+    this.subscriptions = this.subscriptions.filter((subscription) => {
+      if (!parameters.callback && (subscription.path === parameters.path)) {
+        return false;
+      }
+      if (
+        parameters.callback &&
+        (subscription.path === parameters.path &&
+          subscription.callback === parameters.callback)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (this.record) {
+      this.record.unsubscribe(parameters, this);
     }
+  }
 
-    public eraseWithAck (path: string, callback?: ((error: string) => void)): Promise<void> | void {
-        if (this.record) {
-            return this.record.setWithAck(utils.normalizeSetArguments(arguments))
-        }
+  discard(): void {
+    if (this.record) {
+      for (let i = 0; i < this.subscriptions.length; i++) {
+        this.record.unsubscribe(this.subscriptions[i], this);
+      }
+      return this.record.removeReference(this);
     }
+  }
 
-    public subscribe (path: string, callback: (data: any) => void, triggerNow?: boolean) {
-        const parameters = utils.normalizeArguments(arguments)
-        this.subscriptions.push(parameters)
-        if (this.record) {
-            this.record.subscribe(parameters, this)
-        }
+  delete(callback?: (error: string | null) => void): void | Promise<void> {
+    if (this.record) {
+      return this.record.delete(callback);
     }
+  }
 
-    public unsubscribe (path: string, callback: (data: any) => void) {
-        const parameters = utils.normalizeArguments(arguments)
-
-        this.subscriptions = this.subscriptions.filter(subscription => {
-          if (!parameters.callback && (subscription.path === parameters.path)) return false
-          if (parameters.callback && (subscription.path === parameters.path && subscription.callback === parameters.callback)) return false
-          return true
-        })
-
-        if (this.record) {
-            this.record.unsubscribe(parameters, this)
-        }
+  setMergeStrategy(mergeStrategy: MergeStrategy): void {
+    if (this.record) {
+      this.record.setMergeStrategy(mergeStrategy);
     }
-
-    public discard (): void {
-        if (this.record) {
-            for (let i = 0; i < this.subscriptions.length; i++) {
-                this.record.unsubscribe(this.subscriptions[i], this)
-            }
-            return this.record.removeReference(this)
-        }
-    }
-
-    public delete (callback?: (error: string | null) => void): void | Promise<void> {
-        if (this.record) {
-            return this.record.delete(callback)
-        }
-    }
-
-    public setMergeStrategy (mergeStrategy: MergeStrategy): void {
-        if (this.record) {
-            this.record.setMergeStrategy(mergeStrategy)
-        }
-    }
+  }
 }

@@ -1,22 +1,33 @@
-import { RecordOfflineStore, offlineStoreWriteResponse } from '../deepstream-client'
-import { RecordData } from '../constants'
+import {
+  offlineStoreWriteResponse,
+  RecordOfflineStore,
+} from "../deepstream-client.ts";
+import { RecordData } from "../constants.ts";
 
 export class NoopStorage implements RecordOfflineStore {
-  public isReady = true
+  isReady = true;
 
-  public get (recordName: string, callback: ((recordName: string, version: number, data: RecordData) => void)) {
-    setTimeout(callback.bind(this, recordName, -1, null), 0)
+  get(
+    recordName: string,
+    callback: ((recordName: string, version: number, data: RecordData) => void),
+  ) {
+    setTimeout(callback.bind(this, recordName, -1, null), 0);
   }
 
-  public set (recordName: string, version: number, data: RecordData, callback: offlineStoreWriteResponse) {
-    setTimeout(callback, 0)
+  set(
+    _recordName: string,
+    _version: number,
+    _data: RecordData,
+    callback: offlineStoreWriteResponse,
+  ) {
+    setTimeout(callback, 0);
   }
 
-  public delete (recordName: string, callback: offlineStoreWriteResponse) {
-    setTimeout(callback, 0)
+  delete(_recordName: string, callback: offlineStoreWriteResponse) {
+    setTimeout(callback, 0);
   }
 
-  public reset (callback: (error: string | null) => void) {
-    callback(null)
+  reset(callback: (error: string | null) => void) {
+    callback(null);
   }
 }

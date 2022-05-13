@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 /**
  * Compares two objects for deep (recoursive) equality
  *
@@ -134,7 +135,7 @@ export interface RecordSubscribeArguments { callback: (data: any) => void, path?
 /**
  * Creates a map based on the types of the provided arguments
  */
-export const normalizeSetArguments = (args: IArguments, startIndex: number = 0): RecordSetArguments => {
+export const normalizeSetArguments = (args: IArguments, startIndex = 0): RecordSetArguments => {
   let result
   const isRootData = (data: any) => data !== undefined && typeof data === 'object'
   const isNestedData = (data: any) => typeof data !== 'function'

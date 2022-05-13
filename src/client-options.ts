@@ -1,5 +1,5 @@
-import { MergeStrategy, REMOTE_WINS } from './record/merge-strategy'
-import {RecordOfflineStore, Socket } from './deepstream-client'
+import { MergeStrategy, REMOTE_WINS } from './record/merge-strategy.ts'
+import {RecordOfflineStore, Socket } from './deepstream-client.ts'
 
 export interface  Options {
     nativeTimerRegistry: boolean,
@@ -9,6 +9,7 @@ export interface  Options {
     saveUpdatesOffline: boolean,
     storage?: RecordOfflineStore,
 
+    // deno-lint-ignore no-explicit-any
     socketFactory?: (url: string, options: any) => Socket
 
     /**
@@ -84,6 +85,7 @@ export interface  Options {
     /**
      * Options for the provided socket factory
      */
+    // deno-lint-ignore no-explicit-any
     socketOptions?: any,
     /**
      * dirtyStorageName is used as a key to save offline dirty records states
