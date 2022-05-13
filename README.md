@@ -1,6 +1,6 @@
 # Insomnia
 
-deepstream.io client deno wrapper
+deepstream.io client deno wrapper  | directly ported from [deepstream.io-client-js](https://github.com/deepstreamIO/deepstream.io-client-js)
 
 # install
 install the server from [here](https://github.com/deepstreamIO/deepstream.io/releases)
@@ -19,3 +19,5 @@ client.login({ username: "peter", password: "sesame" }, (success, data) => {
   });
 });
 ```
+### Maintainers
+- Loading ([@load1n9](https://github.com/load1n9))
