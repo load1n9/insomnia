@@ -1,8 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import {
-  offlineStoreWriteResponse,
-  RecordOfflineStore,
-} from "../deepstream-client.ts";
+import { offlineStoreWriteResponse, RecordOfflineStore } from "../client.ts";
 import { Options } from "../client-options.ts";
 import { RecordData } from "../constants.ts";
 const indexedDB = (window as any).indexedDB;
@@ -21,12 +18,13 @@ interface Request {
 }
 
 export class Storage implements RecordOfflineStore {
-  private isReady = false;
-  private db: any;
-  private queuedRequests: Map<string, Request[]> = new Map();
-  private flushTimeout: number | null = null;
-
-  constructor(private options: Options) {
+  #isReady = false;
+  #db: any;
+  #queuedRequests: Map<string, Request[]> = new Map();
+  #flushTimeout: number | null = null;
+  #options: Options;
+  constructor(options: Options) {
+    this.#options = options;
     throw new Error("IndexDB currently not supported when deepstream in deno");
 
     // this.flush = this.flush.bind(this)
@@ -90,7 +88,7 @@ export class Storage implements RecordOfflineStore {
     recordName: string,
     callback: ((recordName: string, version: number, data: RecordData) => void),
   ) {
-    const ignore = this.options.indexdb.ignorePrefixes.some((prefix) =>
+    const ignore = this.#options.indexdb.ignorePrefixes.some((prefix) =>
       recordName.startsWith(prefix)
     );
     if (ignore) {
@@ -107,7 +105,7 @@ export class Storage implements RecordOfflineStore {
     data: RecordData,
     callback: offlineStoreWriteResponse,
   ) {
-    const ignore = this.options.indexdb.ignorePrefixes.some((prefix) =>
+    const ignore = this.#options.indexdb.ignorePrefixes.some((prefix) =>
       recordName.startsWith(prefix)
     );
     if (ignore) {
@@ -125,7 +123,7 @@ export class Storage implements RecordOfflineStore {
   }
 
   delete(recordName: string, callback: offlineStoreWriteResponse) {
-    const ignore = this.options.indexdb.ignorePrefixes.some((prefix) =>
+    const ignore = this.#options.indexdb.ignorePrefixes.some((prefix) =>
       recordName.startsWith(prefix)
     );
     if (ignore) {
@@ -137,41 +135,41 @@ export class Storage implements RecordOfflineStore {
   }
 
   reset(callback: (error: string | null) => void) {
-    if (this.db) {
-      this.db.close();
-      this.db = null;
+    if (this.#db) {
+      this.#db.close();
+      this.#db = null;
     }
 
     const deleteDBReqeust = (indexedDB as any).deleteDatabase(
-      this.options.indexdb.storageDatabaseName,
+      this.#options.indexdb.storageDatabaseName,
     );
     deleteDBReqeust.onblocked = () =>
       setTimeout(() => this.reset(callback), 1000);
     deleteDBReqeust.onsuccess = () => callback(null);
     deleteDBReqeust.onerror = (event: any) => {
       const errorMessage =
-        `Error deleting database ${this.options.indexdb.storageDatabaseName}`;
+        `Error deleting database ${this.#options.indexdb.storageDatabaseName}`;
       console.error(errorMessage, event);
       callback(errorMessage);
     };
   }
 
   private registerFlush() {
-    if (this.isReady && !this.flushTimeout) {
-      this.flushTimeout = setTimeout(
+    if (this.#isReady && !this.#flushTimeout) {
+      this.#flushTimeout = setTimeout(
         this.flush,
-        this.options.indexdb.flushTimeout,
+        this.#options.indexdb.flushTimeout,
       ) as never as number;
     }
   }
 
   private flush() {
-    const transaction = this.db.transaction(
-      this.queuedRequests.keys(),
+    const transaction = this.#db.transaction(
+      this.#queuedRequests.keys(),
       "readwrite",
     );
 
-    for (const [key, queuedRequests] of this.queuedRequests) {
+    for (const [key, queuedRequests] of this.#queuedRequests) {
       const objectStore = transaction.objectStore(key);
       queuedRequests.forEach(
         ({ operation, recordName, version, data, callback }) => {
@@ -203,7 +201,7 @@ export class Storage implements RecordOfflineStore {
             }
             case Operation.SET: {
               const request = objectStore.put({
-                [this.options.indexdb.primaryKey]: recordName,
+                [this.#options.indexdb.primaryKey]: recordName,
                 version,
                 data,
               });
@@ -215,12 +213,12 @@ export class Storage implements RecordOfflineStore {
         },
       );
     }
-    this.queuedRequests.clear();
-    this.flushTimeout = null;
+    this.#queuedRequests.clear();
+    this.#flushTimeout = null;
   }
 
   private onReady() {
-    this.isReady = true;
+    this.#isReady = true;
     this.flush();
   }
 
@@ -230,12 +228,12 @@ export class Storage implements RecordOfflineStore {
     if (firstSlashIndex > -1) {
       objectStoreName = request.recordName.substring(0, firstSlashIndex);
       if (
-        this.options.indexdb.objectStoreNames.indexOf(objectStoreName) === -1
+        this.#options.indexdb.objectStoreNames.indexOf(objectStoreName) === -1
       ) {
         console.error(
           `Object store names need to be predefined, missing ${objectStoreName}. Using default objectStore instead.`,
         );
-        objectStoreName = this.options.indexdb.defaultObjectStoreName;
+        objectStoreName = this.#options.indexdb.defaultObjectStoreName;
       } else {
         request.recordName = request.recordName.substring(
           firstSlashIndex + 1,
@@ -243,11 +241,11 @@ export class Storage implements RecordOfflineStore {
         );
       }
     } else {
-      objectStoreName = this.options.indexdb.defaultObjectStoreName;
+      objectStoreName = this.#options.indexdb.defaultObjectStoreName;
     }
-    const requests = this.queuedRequests.get(objectStoreName);
+    const requests = this.#queuedRequests.get(objectStoreName);
     if (requests === undefined) {
-      this.queuedRequests.set(objectStoreName, [request]);
+      this.#queuedRequests.set(objectStoreName, [request]);
     } else {
       requests.push(request);
     }

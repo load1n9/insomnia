@@ -1,5 +1,5 @@
 export {
   C,
-  DeepstreamClient,
+  InsomniaClient,
   DefaultOptions as Options,
-} from "./src/deepstream-client.ts";
+} from "./src/client.ts";

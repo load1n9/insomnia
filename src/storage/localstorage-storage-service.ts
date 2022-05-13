@@ -1,7 +1,4 @@
-import {
-  offlineStoreWriteResponse,
-  RecordOfflineStore,
-} from "../deepstream-client.ts";
+import { offlineStoreWriteResponse, RecordOfflineStore } from "../client.ts";
 import "https://deno.land/x/localstorage@0.1.0/mod.ts";
 
 const { localStorage } = window;
@@ -11,17 +8,17 @@ import { RecordData } from "../constants.ts";
 export class Storage implements RecordOfflineStore {
   isReady = true;
   // deno-lint-ignore no-explicit-any
-  private storage: any;
+  #storage: any;
 
   constructor(_options: Options) {
-    this.storage = localStorage;
+    this.#storage = localStorage;
   }
 
   get(
     recordName: string,
     callback: ((recordName: string, version: number, data: RecordData) => void),
   ) {
-    const item = this.storage.getItem(recordName);
+    const item = this.#storage.getItem(recordName);
     if (item) {
       const doc = JSON.parse(item);
       setTimeout(callback.bind(this, recordName, doc.version, doc.data), 0);
@@ -36,7 +33,7 @@ export class Storage implements RecordOfflineStore {
     data: RecordData,
     callback: offlineStoreWriteResponse,
   ) {
-    this.storage.setItem(
+    this.#storage.setItem(
       recordName,
       JSON.stringify({ recordName, version, data }),
     );
@@ -44,7 +41,7 @@ export class Storage implements RecordOfflineStore {
   }
 
   delete(recordName: string, callback: offlineStoreWriteResponse) {
-    this.storage.removeItem(recordName);
+    this.#storage.removeItem(recordName);
     setTimeout(callback, 0);
   }
 

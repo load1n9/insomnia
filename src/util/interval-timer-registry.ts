@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import { Timeout, TimerRef, TimerRegistry } from "../deepstream-client.ts";
+import { Timeout, TimerRef, TimerRegistry } from "../client.ts";
 
 interface InternalTimeout extends Timeout {
   created: number;

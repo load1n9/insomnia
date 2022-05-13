@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { Options } from "../client-options.ts";
 import { RPC_ACTION, RPCResult, TOPIC } from "../constants.ts";
 
@@ -8,21 +8,19 @@ export type RPCMakeCallback = (
   result?: RPCResult,
 ) => void;
 
-/**
- * This class represents a single remote procedure
- * call made from the client to the server. It's main function
- * is to encapsulate the logic and to convert the
- * incoming response data
- */
 export class RPC {
+  #response: RPCMakeCallback;
+  #services: Services;
   constructor(
     name: string,
     correlationId: string,
     data: any,
-    private response: RPCMakeCallback,
+    response: RPCMakeCallback,
     _options: Options,
-    private services: Services,
+    services: Services,
   ) {
+    this.#response = response;
+    this.#services = services;
     const message = {
       topic: TOPIC.RPC,
       action: RPC_ACTION.REQUEST,
@@ -31,26 +29,17 @@ export class RPC {
       parsedData: data,
     };
 
-    this.services.connection.sendMessage(message);
+    this.#services.connection.sendMessage(message);
   }
 
-  /**
-   * Called once an ack message is received from the server
-   */
-  public accept(): void {
+  accept(): void {
   }
 
-  /**
-   * Called once a response message is received from the server.
-   */
-  public respond(data: any) {
-    this.response(null, data);
+  respond(data: any) {
+    this.#response(null, data);
   }
 
-  /**
-   * Called once an error is received from the server.
-   */
-  public error(data: any) {
-    this.response(data);
+  error(data: any) {
+    this.#response(data);
   }
 }

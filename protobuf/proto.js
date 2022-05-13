@@ -891,9 +891,8 @@ let protobuf;
             } else if (t > 191 && t < 224) {
               chunk[i++] = (t & 31) << 6 | buffer[start++] & 63;
             } else if (t > 239 && t < 365) {
-              t =
-                ((t & 7) << 18 | (buffer[start++] & 63) << 12 |
-                  (buffer[start++] & 63) << 6 | buffer[start++] & 63) - 0x10000;
+              t = ((t & 7) << 18 | (buffer[start++] & 63) << 12 |
+                (buffer[start++] & 63) << 6 | buffer[start++] & 63) - 0x10000;
               chunk[i++] = 0xD800 + (t >> 10);
               chunk[i++] = 0xDC00 + (t & 1023);
             } else {
@@ -1661,9 +1660,7 @@ let protobuf;
                 if (!(response instanceof responseCtor)) {
                   try {
                     response = responseCtor[
-                      self.responseDelimited
-                        ? "decodeDelimited"
-                        : "decode"
+                      self.responseDelimited ? "decodeDelimited" : "decode"
                     ](response);
                   } catch (err) {
                     self.emit("error", err, method);
@@ -2110,12 +2107,11 @@ let protobuf;
          * Long.js's Long class if available.
          * @type {Constructor<Long>}
          */
-        util.Long =
-          /* istanbul ignore next */ util.global
-                .dcodeIO && /* istanbul ignore next */
-              util.global.dcodeIO.Long || /* istanbul ignore next */
-            util.global.Long ||
-            util.inquire("long");
+        util.Long = /* istanbul ignore next */ util.global
+              .dcodeIO && /* istanbul ignore next */
+            util.global.dcodeIO.Long || /* istanbul ignore next */
+          util.global.Long ||
+          util.inquire("long");
 
         /**
          * Regular expression used to verify 2 bit (`bool`) map keys.
@@ -2277,7 +2273,9 @@ let protobuf;
            */
           return function () { // eslint-disable-line consistent-return
             for (
-              var keys = Object.keys(this), i = keys.length - 1; i > -1; --i
+              var keys = Object.keys(this), i = keys.length - 1;
+              i > -1;
+              --i
             ) {
               if (
                 fieldMap[keys[i]] === 1 && this[keys[i]] !== undefined &&

@@ -10,7 +10,9 @@ function isEvent(action: any): boolean {
 }
 
 export class Logger {
-  constructor(private emitter: Emitter) {
+  #emitter: Emitter;
+  constructor(emitter: Emitter) {
+    this.#emitter = emitter;
   }
 
   warn(
@@ -34,7 +36,6 @@ export class Logger {
         typeof meta === "string" ? meta : JSON.stringify(meta)
       }`;
     }
-    // tslint:disable-next-line:no-console
     console.warn(warnMessage);
   }
 
@@ -46,7 +47,7 @@ export class Logger {
   ): void {
     if (isEvent(event)) {
       if (event === EVENT.IS_CLOSED || event === EVENT.CONNECTION_ERROR) {
-        this.emitter.emit(
+        this.#emitter.emit(
           "error",
           meta,
           // deno-lint-ignore no-explicit-any
@@ -54,7 +55,7 @@ export class Logger {
           TOPIC[TOPIC.CONNECTION],
         );
       } else {
-        this.emitter.emit(
+        this.#emitter.emit(
           "error",
           meta,
           // deno-lint-ignore no-explicit-any
@@ -64,7 +65,7 @@ export class Logger {
       }
     } else {
       const action = event ? event : (message as Message).action;
-      this.emitter.emit(
+      this.#emitter.emit(
         "error",
         meta || message,
         // deno-lint-ignore no-explicit-any

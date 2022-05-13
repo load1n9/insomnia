@@ -1,11 +1,7 @@
 // deno-lint-ignore-file ban-types no-explicit-any
 export class Emitter {
-  #callbacks: null | Map<string, Array<{ fn: Function; scope: any }>> =
-    null;
+  #callbacks: null | Map<string, Array<{ fn: Function; scope: any }>> = null;
 
-  /**
-   * Listen on the given `event` with `fn`.
-   */
   on(event: string, fn: Function, scope: any = this) {
     this.#callbacks = this.#callbacks || new Map();
     let callbacks = this.#callbacks.get(event);
@@ -29,10 +25,6 @@ export class Emitter {
     return this;
   }
 
-  /**
-   * Remove the given callback for `event` or all
-   * registered callbacks.
-   */
   off(event?: string, fn?: Function, scope?: any) {
     // all
     if (event === undefined && fn === undefined && scope === undefined) {
@@ -111,23 +103,11 @@ export class Emitter {
     return this;
   }
 
-  /**
-   * Check if this emitter has `event` handlers.
-   */
   hasListeners(event: string) {
-    if (this.#callbacks === null) {
-      return false;
-    }
-    return this.#callbacks.has(event);
+    return this.#callbacks === null ? false : this.#callbacks.has(event);
   }
 
-  /**
-   * Returns an array listing the events for which the emitter has registered listeners.
-   */
   eventNames() {
-    if (this.#callbacks === null) {
-      return [];
-    }
-    return [...this.#callbacks.keys()];
+    return this.#callbacks === null ? [] : [...this.#callbacks.keys()];
   }
 }

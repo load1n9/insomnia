@@ -1,5 +1,5 @@
 export enum RPC_ACTION {
-    UNKNOWN = 0,
+  UNKNOWN = 0,
 
   ERROR = 1,
   REQUEST = 2,

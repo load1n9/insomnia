@@ -1,45 +1,42 @@
 // deno-lint-ignore-file ban-types
 
 import { EVENT, Message, RECORD_ACTION } from "../constants.ts";
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { WriteAckCallback } from "./record-core.ts";
 
 export class WriteAcknowledgementService {
-  private services: Services;
-  private responses: Map<string, Function>;
-  private count: number;
+  #services: Services;
+  #responses: Map<string, Function>;
+  #count: number;
 
   constructor(services: Services) {
-    this.services = services;
-    this.responses = new Map<string, WriteAckCallback>();
-    this.count = 1;
+    this.#services = services;
+    this.#responses = new Map<string, WriteAckCallback>();
+    this.#count = 1;
 
-    this.services.connection.onLost(this.onConnectionLost.bind(this));
+    this.#services.connection.onLost(this.#onConnectionLost.bind(this));
   }
 
-  /**
-   * Send message with write ack callback.
-   */
   send(message: Message, callback: WriteAckCallback): void {
-    if (this.services.connection.isConnected === false) {
-      this.services.timerRegistry.requestIdleCallback(
+    if (this.#services.connection.isConnected === false) {
+      this.#services.timerRegistry.requestIdleCallback(
         callback.bind(this, EVENT.CLIENT_OFFLINE, message.name!),
       );
       return;
     }
-    const correlationId = this.count.toString();
-    this.responses.set(correlationId, callback);
-    this.services.connection.sendMessage({
+    const correlationId = this.#count.toString();
+    this.#responses.set(correlationId, callback);
+    this.#services.connection.sendMessage({
       ...message,
       correlationId,
       isWriteAck: true,
     });
-    this.count++;
+    this.#count++;
   }
 
   recieve(message: Message): void {
     const id = message.correlationId as string;
-    const response = this.responses.get(id);
+    const response = this.#responses.get(id);
     if (
       !response ||
       (message.action !== RECORD_ACTION.WRITE_ACKNOWLEDGEMENT &&
@@ -59,11 +56,11 @@ export class WriteAcknowledgementService {
         : response(null, message.name!);
     }
 
-    this.responses.delete(id);
+    this.#responses.delete(id);
   }
 
-  private onConnectionLost(): void {
-    this.responses.forEach((response) => response(EVENT.CLIENT_OFFLINE));
-    this.responses.clear();
+  #onConnectionLost(): void {
+    this.#responses.forEach((response) => response(EVENT.CLIENT_OFFLINE));
+    this.#responses.clear();
   }
 }

@@ -1,4 +1,4 @@
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { Options } from "../client-options.ts";
 import {
   EVENT,
@@ -14,47 +14,41 @@ import { Emitter } from "../util/emitter.ts";
 import { BulkSubscriptionService } from "../util/bulk-subscription-service.ts";
 
 export class EventHandler {
-  private emitter = new Emitter();
-  private listeners: Listener;
-  private limboQueue: EventMessage[] = [];
-  private bulkSubscription: BulkSubscriptionService<EVENT_ACTION>;
-
+  #emitter = new Emitter();
+  #listeners: Listener;
+  #limboQueue: EventMessage[] = [];
+  #bulkSubscription: BulkSubscriptionService<EVENT_ACTION>;
+  #services: Services;
   constructor(
-    private services: Services,
+    services: Services,
     options: Options,
     listeners?: Listener,
   ) {
-    this.bulkSubscription = new BulkSubscriptionService<EVENT_ACTION>(
-      this.services,
+    this.#services = services;
+    this.#bulkSubscription = new BulkSubscriptionService<EVENT_ACTION>(
+      this.#services,
       options.subscriptionInterval,
       TOPIC.EVENT,
       EVENT_ACTION.SUBSCRIBE,
       EVENT_ACTION.UNSUBSCRIBE,
-      this.onBulkSubscriptionSent.bind(this),
+      this.#onBulkSubscriptionSent.bind(this),
     );
 
-    this.listeners = listeners || new Listener(TOPIC.EVENT, services);
-    this.services.connection.registerHandler(
+    this.#listeners = listeners || new Listener(TOPIC.EVENT, services);
+    this.#services.connection.registerHandler(
       TOPIC.EVENT,
-      this.handle.bind(this),
+      this.#handle.bind(this),
     );
-    this.services.connection.onExitLimbo(this.onExitLimbo.bind(this));
-    this.services.connection.onReestablished(
-      this.onConnectionReestablished.bind(this),
+    this.#services.connection.onExitLimbo(this.#onExitLimbo.bind(this));
+    this.#services.connection.onReestablished(
+      this.#onConnectionReestablished.bind(this),
     );
   }
 
-  /**
-   * Returns all the events that are subscribed to locally
-   */
   eventNames(): string[] {
-    return this.emitter.eventNames();
+    return this.#emitter.eventNames();
   }
 
-  /**
-   * Subscribe to an event. This will receive both locally emitted events
-   * as well as events emitted by other connected clients.
-   */
   subscribe(name: string, callback: (data: EventData) => void) {
     if (typeof name !== "string" || name.length === 0) {
       throw new Error("invalid argument name");
@@ -63,19 +57,14 @@ export class EventHandler {
       throw new Error("invalid argument callback");
     }
 
-    if (!this.emitter.hasListeners(name)) {
-      if (this.services.connection.isConnected) {
-        this.bulkSubscription.subscribe(name);
+    if (!this.#emitter.hasListeners(name)) {
+      if (this.#services.connection.isConnected) {
+        this.#bulkSubscription.subscribe(name);
       }
     }
-    this.emitter.on(name, callback);
+    this.#emitter.on(name, callback);
   }
 
-  /**
-   * Removes a callback for a specified event. If all callbacks
-   * for an event have been removed, the server will be notified
-   * that the client is unsubscribed as a listener
-   */
   unsubscribe(name: string, callback: (data: EventData) => void): void {
     if (!name || typeof name !== "string" || name.length === 0) {
       throw new Error("invalid argument name");
@@ -84,8 +73,8 @@ export class EventHandler {
       throw new Error("invalid argument callback");
     }
 
-    if (!this.emitter.hasListeners(name)) {
-      this.services.logger.warn({
+    if (!this.#emitter.hasListeners(name)) {
+      this.#services.logger.warn({
         topic: TOPIC.EVENT,
         action: EVENT_ACTION.NOT_SUBSCRIBED,
         name,
@@ -93,17 +82,13 @@ export class EventHandler {
       return;
     }
 
-    this.emitter.off(name, callback);
+    this.#emitter.off(name, callback);
 
-    if (!this.emitter.hasListeners(name)) {
-      this.bulkSubscription.unsubscribe(name);
+    if (!this.#emitter.hasListeners(name)) {
+      this.#bulkSubscription.unsubscribe(name);
     }
   }
 
-  /**
-   * Emits an event locally and sends a message to the server to
-   * broadcast the event to the other connected clients
-   */
   emit(name: string, data: EventData): void {
     if (typeof name !== "string" || name.length === 0) {
       throw new Error("invalid argument name");
@@ -116,57 +101,46 @@ export class EventHandler {
       parsedData: data,
     };
 
-    if (this.services.connection.isConnected) {
-      this.services.connection.sendMessage(message);
-    } else if (this.services.connection.isInLimbo) {
-      this.limboQueue.push(message as EventMessage);
+    if (this.#services.connection.isConnected) {
+      this.#services.connection.sendMessage(message);
+    } else if (this.#services.connection.isInLimbo) {
+      this.#limboQueue.push(message as EventMessage);
     }
 
-    this.emitter.emit(name, data);
+    this.#emitter.emit(name, data);
   }
 
-  /**
-   * Allows to listen for event subscriptions made by this or other clients. This
-   * is useful to create "active" data providers, e.g. providers that only provide
-   * data for a particular event if a user is actually interested in it
-   */
   listen(pattern: string, callback: ListenCallback) {
-    this.listeners.listen(pattern, callback);
+    this.#listeners.listen(pattern, callback);
   }
 
-  /**
-   * Removes a listener that was previously registered
-   */
   unlisten(pattern: string) {
-    this.listeners.unlisten(pattern);
+    this.#listeners.unlisten(pattern);
   }
 
-  /**
-   * Handles incoming messages from the server
-   */
-  private handle(message: EventMessage): void {
+  #handle(message: EventMessage): void {
     if (message.isAck) {
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       return;
     }
 
     if (message.action === EVENT_ACTION.EMIT) {
       if (message.parsedData !== undefined) {
-        this.emitter.emit(message.name as string, message.parsedData);
+        this.#emitter.emit(message.name as string, message.parsedData);
       } else {
-        this.emitter.emit(message.name as string, undefined);
+        this.#emitter.emit(message.name as string, undefined);
       }
       return;
     }
 
     if (message.action === EVENT_ACTION.MESSAGE_DENIED) {
-      this.services.logger.error(
+      this.#services.logger.error(
         { topic: TOPIC.EVENT },
         EVENT_ACTION.MESSAGE_DENIED,
       );
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       if (message.originalAction === EVENT_ACTION.SUBSCRIBE) {
-        this.emitter.off(message.name);
+        this.#emitter.off(message.name);
       }
       return;
     }
@@ -175,11 +149,11 @@ export class EventHandler {
       message.action === EVENT_ACTION.MULTIPLE_SUBSCRIPTIONS ||
       message.action === EVENT_ACTION.NOT_SUBSCRIBED
     ) {
-      this.services.timeoutRegistry.remove({
+      this.#services.timeoutRegistry.remove({
         ...message,
         action: EVENT_ACTION.SUBSCRIBE,
       });
-      this.services.logger.warn(message);
+      this.#services.logger.warn(message);
       return;
     }
 
@@ -187,35 +161,32 @@ export class EventHandler {
       message.action === EVENT_ACTION.SUBSCRIPTION_FOR_PATTERN_FOUND ||
       message.action === EVENT_ACTION.SUBSCRIPTION_FOR_PATTERN_REMOVED
     ) {
-      this.listeners.handle(message as ListenMessage);
+      this.#listeners.handle(message as ListenMessage);
       return;
     }
 
     if (message.action === EVENT_ACTION.INVALID_LISTEN_REGEX) {
-      this.services.logger.error(message);
+      this.#services.logger.error(message);
       return;
     }
 
-    this.services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
+    this.#services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
   }
 
-  /**
-   * Resubscribes to events when connection is lost
-   */
-  private onConnectionReestablished() {
-    this.bulkSubscription.subscribeList(this.emitter.eventNames());
+  #onConnectionReestablished() {
+    this.#bulkSubscription.subscribeList(this.#emitter.eventNames());
 
-    for (let i = 0; i < this.limboQueue.length; i++) {
-      this.services.connection.sendMessage(this.limboQueue[i]);
+    for (let i = 0; i < this.#limboQueue.length; i++) {
+      this.#services.connection.sendMessage(this.#limboQueue[i]);
     }
-    this.limboQueue = [];
+    this.#limboQueue = [];
   }
 
-  private onExitLimbo() {
-    this.limboQueue = [];
+  #onExitLimbo() {
+    this.#limboQueue = [];
   }
 
-  private onBulkSubscriptionSent(message: Message) {
-    this.services.timeoutRegistry.add({ message });
+  #onBulkSubscriptionSent(message: Message) {
+    this.#services.timeoutRegistry.add({ message });
   }
 }

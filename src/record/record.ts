@@ -9,63 +9,64 @@ export type SubscriptionCallback = (data: any) => void;
 
 export class Record extends Emitter {
   debugId: string | null;
-  private subscriptions: utils.RecordSubscribeArguments[] = [];
-
-  constructor(private record: RecordCore<Record>) {
+  #subscriptions: utils.RecordSubscribeArguments[] = [];
+  #record: RecordCore<Record>;
+  constructor(record: RecordCore<Record>) {
     super();
-    this.debugId = this.record.getDebugId();
-    this.record.on(
+    this.#record = record;
+    this.debugId = this.#record.getDebugId();
+    this.#record.on(
       EVENT.RECORD_READY,
       this.emit.bind(this, EVENT.RECORD_READY, this),
       this,
     );
-    this.record.on(
+    this.#record.on(
       EVENT.RECORD_DISCARDED,
       this.emit.bind(this, EVENT.RECORD_DISCARDED),
       this,
     );
-    this.record.on(
+    this.#record.on(
       EVENT.RECORD_DELETED,
       this.emit.bind(this, EVENT.RECORD_DELETED),
       this,
     );
-    this.record.on(
+    this.#record.on(
       EVENT.RECORD_ERROR,
       this.emit.bind(this, EVENT.RECORD_ERROR),
       this,
     );
 
-    this.record.addReference(this);
+    this.#record.addReference(this);
   }
 
   get name(): string {
-    return this.record.name;
+    return this.#record.name;
   }
 
   get isReady(): boolean {
-    return this.record.isReady;
+    return this.#record.isReady;
   }
 
   get version(): number {
-    return this.record.version as number;
+    return this.#record.version as number;
   }
 
   get hasProvider(): boolean {
-    return this.record.hasProvider;
+    return this.#record.hasProvider;
   }
 
   whenReady(): Promise<Record>;
   whenReady(callback: ((record: Record) => void)): void;
   whenReady(callback?: ((record: Record) => void)): void | Promise<Record> {
     if (callback) {
-      this.record.whenReady(this, callback);
+      this.#record.whenReady(this, callback);
     } else {
-      return this.record.whenReady(this);
+      return this.#record.whenReady(this);
     }
   }
 
   get(path?: string): any {
-    return this.record.get(path);
+    return this.#record.get(path);
   }
 
   set(data: JSONObject, callback?: WriteAckCallback): void;
@@ -79,7 +80,7 @@ export class Record extends Emitter {
     _dataOrCallback: WriteAckCallback | RecordData | undefined,
     _callback?: WriteAckCallback,
   ): void {
-    return this.record.set(utils.normalizeSetArguments(arguments));
+    return this.#record.set(utils.normalizeSetArguments(arguments));
   }
 
   setWithAck(data: JSONObject): Promise<void>;
@@ -99,14 +100,9 @@ export class Record extends Emitter {
     _dataOrCallback?: RecordData | ((error: string) => void) | undefined,
     _callback?: ((error: string) => void),
   ): Promise<void> | void {
-    return this.record.setWithAck(utils.normalizeSetArguments(arguments));
+    return this.#record.setWithAck(utils.normalizeSetArguments(arguments));
   }
 
-  /**
-   * Deletes a path from the record. Equivalent to doing `record.set(path, undefined)`
-   *
-   * @param {String} path The path to be deleted
-   */
   erase(path: string): void {
     if (!path) {
       throw new Error(
@@ -116,10 +112,6 @@ export class Record extends Emitter {
     this.set(path, undefined);
   }
 
-  /**
-   * Deletes a path from the record and either takes a callback that will be called when the
-   * write has been done or returns a promise that will resolve when the write is done.
-   */
   eraseWithAck(path: string): Promise<void>;
   eraseWithAck(path: string, callback: ((error: string) => void)): void;
   eraseWithAck(
@@ -151,8 +143,8 @@ export class Record extends Emitter {
     _triggerNow?: boolean,
   ): void {
     const parameters = utils.normalizeArguments(arguments);
-    this.subscriptions.push(parameters);
-    this.record.subscribe(parameters, this);
+    this.#subscriptions.push(parameters);
+    this.#record.subscribe(parameters, this);
   }
 
   unsubscribe(callback: SubscriptionCallback): void;
@@ -162,7 +154,7 @@ export class Record extends Emitter {
     _callback?: SubscriptionCallback,
   ): void {
     const parameters = utils.normalizeArguments(arguments);
-    this.subscriptions = this.subscriptions.filter((subscription: any) => {
+    this.#subscriptions = this.#subscriptions.filter((subscription: any) => {
       if (!parameters.callback && (subscription.path === parameters.path)) {
         return false;
       }
@@ -176,22 +168,22 @@ export class Record extends Emitter {
       return true;
     });
 
-    this.record.unsubscribe(parameters, this);
+    this.#record.unsubscribe(parameters, this);
   }
 
   discard(): void {
-    for (let i = 0; i < this.subscriptions.length; i++) {
-      this.record.unsubscribe(this.subscriptions[i], this);
+    for (let i = 0; i < this.#subscriptions.length; i++) {
+      this.#record.unsubscribe(this.#subscriptions[i], this);
     }
-    this.record.removeReference(this);
-    this.record.removeContext(this);
+    this.#record.removeReference(this);
+    this.#record.removeContext(this);
   }
 
   delete(callback?: (error: string | null) => void): void | Promise<void> {
-    return this.record.delete(callback);
+    return this.#record.delete(callback);
   }
 
   setMergeStrategy(mergeStrategy: MergeStrategy): void {
-    this.record.setMergeStrategy(mergeStrategy);
+    this.#record.setMergeStrategy(mergeStrategy);
   }
 }

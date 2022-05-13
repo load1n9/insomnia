@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-explicit-any ban-types
-import { offlineStoreWriteResponse, Services } from "../deepstream-client.ts";
+import { offlineStoreWriteResponse, Services } from "../client.ts";
 import { Options } from "../client-options.ts";
 import {
   EVENT,
@@ -63,8 +63,8 @@ export class RecordCore<Context = null> extends Emitter {
     resolve?: () => void;
   } | null = null;
   pendingWrites: utils.RecordSetArguments[] = [];
-  private readyTimer = -1;
-  private recordReadOnlyMode: boolean;
+  #readyTimer = -1;
+  #recordReadOnlyMode: boolean;
 
   readyCallbacks: Array<{ context: any; callback: Function }> = [];
 
@@ -76,7 +76,7 @@ export class RecordCore<Context = null> extends Emitter {
     public whenComplete: (recordName: string) => void,
   ) {
     super();
-    this.recordReadOnlyMode = this.options.recordReadOnlyMode &&
+    this.#recordReadOnlyMode = this.options.recordReadOnlyMode &&
       this.options.recordPrefixWriteWhitelist.every((prefix) =>
         !this.name.startsWith(prefix)
       );
@@ -99,7 +99,7 @@ export class RecordCore<Context = null> extends Emitter {
 
     this.recordServices.dirtyService.whenLoaded(
       this,
-      this.onDirtyServiceLoaded,
+      this.#onDirtyServiceLoaded,
     );
   }
 
@@ -110,17 +110,13 @@ export class RecordCore<Context = null> extends Emitter {
   addReference(ref: any) {
     if (this.references.size === 0 && this.isReady) {
       this.services.timeoutRegistry.clear(this.discardTimeout!);
-      this.services.timerRegistry.remove(this.readyTimer!);
-      this.readyTimer = -1;
+      this.services.timerRegistry.remove(this.#readyTimer!);
+      this.#readyTimer = -1;
       this.stateMachine.transition(RECORD_ACTION.SUBSCRIBE);
     }
     this.references.add(ref);
   }
 
-  /**
-   * Removes all change listeners and notifies the server that the client is
-   * no longer interested in updates for this record
-   */
   removeReference(ref: any): void {
     if (this.checkDestroyed("discard")) {
       return;
@@ -128,8 +124,8 @@ export class RecordCore<Context = null> extends Emitter {
 
     this.whenReadyInternal(ref, () => {
       this.references.delete(ref);
-      if (this.references.size === 0 && this.readyTimer === -1) {
-        this.readyTimer = this.services.timerRegistry.add({
+      if (this.references.size === 0 && this.#readyTimer === -1) {
+        this.#readyTimer = this.services.timerRegistry.add({
           duration: this.options.recordDiscardTimeout,
           callback: this.stateMachine.transition,
           context: this.stateMachine,
@@ -140,23 +136,18 @@ export class RecordCore<Context = null> extends Emitter {
     });
   }
 
-  private onDirtyServiceLoaded() {
+  #onDirtyServiceLoaded() {
     this.services.storage.get(this.name, (_recordName, version, data) => {
       this.services.connection.onReestablished(this.onConnectionReestablished);
       this.services.connection.onLost(this.onConnectionLost);
 
       if (!this.services.connection.isConnected) {
         if (version === -1) {
-          if (this.recordReadOnlyMode) {
+          if (this.#recordReadOnlyMode) {
             return;
           }
           this.version = this.options.initialRecordVersion;
           this.data = Object.create(null);
-          // We do this sync in order to avoid the possibility of a race condition
-          // where connection is established while we are saving. We could introduce
-          // another transition but its probably overkill since we only set this
-          // in order to allow the possibility of this record being retrieved in the
-          // future to know its been created
           this.recordServices.dirtyService.setDirty(this.name, true);
           this.services.storage.set(
             this.name,
@@ -175,9 +166,6 @@ export class RecordCore<Context = null> extends Emitter {
       if (
         version === -1 && !this.recordServices.dirtyService.isDirty(this.name)
       ) {
-        /**
-         * Record has never been created before
-         */
         this.stateMachine.transition(RECORD_ACTION.SUBSCRIBECREATEANDREAD);
       } else {
         this.version = version;
@@ -191,11 +179,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.emitter.emit(EVENT.RECORD_STATE_CHANGED, newState);
   }
 
-  /**
-   * Convenience method, similar to promises. Executes callback
-   * whenever the record is ready, either immediately or once the ready
-   * event is fired
-   */
   whenReady(context: Context): Promise<Context>;
   whenReady(context: Context, callback: (context: Context) => void): void;
   whenReady(
@@ -214,7 +197,6 @@ export class RecordCore<Context = null> extends Emitter {
     );
   }
 
-  /** */
   whenReadyInternal(
     context: Context | null,
     callback: (context: Context | null) => void,
@@ -226,17 +208,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.readyCallbacks.push({ callback, context });
   }
 
-  /**
-   * Sets the value of either the entire dataset
-   * or of a specific path within the record
-   * and submits the changes to the server
-   *
-   * If the new data is equal to the current data, nothing will happen
-   *
-   * @param {[String|Object]} pathOrData Either a JSON path when called with
-   *                                     two arguments or the data itself
-   * @param {Object} data     The data that should be stored in the record
-   */
   set({ path, data, callback }: utils.RecordSetArguments): void {
     if (!path && (data === null || typeof data !== "object")) {
       throw new Error(
@@ -248,7 +219,7 @@ export class RecordCore<Context = null> extends Emitter {
       return;
     }
 
-    if (this.recordReadOnlyMode) {
+    if (this.#recordReadOnlyMode) {
       this.services.logger.error(
         { topic: TOPIC.RECORD },
         EVENT.RECORD_READ_ONLY_MODE,
@@ -286,11 +257,6 @@ export class RecordCore<Context = null> extends Emitter {
     }
   }
 
-  /**
-   * Wrapper function around the record.set that returns a promise
-   * if no callback is supplied.
-   * @returns {Promise} if a callback is omitted a Promise is returned with the result of the write
-   */
   setWithAck(args: utils.RecordSetArguments): Promise<void> | void {
     if (args.callback) {
       this.set(args);
@@ -303,30 +269,10 @@ export class RecordCore<Context = null> extends Emitter {
     });
   }
 
-  /**
-   * Returns a copy of either the entire dataset of the record
-   * or - if called with a path - the value of that path within
-   * the record's dataset.
-   *
-   * Returning a copy rather than the actual value helps to prevent
-   * the record getting out of sync due to unintentional changes to
-   * its data
-   */
   get(path?: string): RecordData {
     return getPath(this.data, path || null, this.options.recordDeepCopy);
   }
 
-  /**
-   * Subscribes to changes to the records dataset.
-   *
-   * Callback is the only mandatory argument.
-   *
-   * When called with a path, it will only subscribe to updates
-   * to that path, rather than the entire record
-   *
-   * If called with true for triggerNow, the callback will
-   * be called immediatly with the current value
-   */
   subscribe(args: utils.RecordSubscribeArguments, context?: any) {
     if (
       args.path !== undefined &&
@@ -352,21 +298,6 @@ export class RecordCore<Context = null> extends Emitter {
     }
   }
 
-  /**
-   * Removes a subscription that was previously made using record.subscribe()
-   *
-   * Can be called with a path to remove the callback for this specific
-   * path or only with a callback which removes it from the generic subscriptions
-   *
-   * Please Note: unsubscribe is a purely client side operation. If the app is no longer
-   * interested in receiving updates for this record from the server it needs to call
-   * discard instead
-   *
-   * @param   {String}           path  A JSON path
-   * @param   {Function}         callback     The callback method. Please note, if a bound
-   *                                          method was passed to subscribe, the same method
-   *                                          must be passed to unsubscribe as well.
-   */
   unsubscribe(args: utils.RecordSubscribeArguments, context?: any) {
     if (
       args.path !== undefined &&
@@ -385,9 +316,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.emitter.off(args.path || "", args.callback, context);
   }
 
-  /**
-   * Deletes the record on the server.
-   */
   delete(callback?: (error: string | null) => void): Promise<void> | void {
     if (!this.services.connection.isConnected) {
       // this.services.logger.warn({ topic: TOPIC.RECORD }, RECORD_ACTION.DELETE, 'Deleting while offline is not supported')
@@ -407,24 +335,17 @@ export class RecordCore<Context = null> extends Emitter {
 
     if (callback && typeof callback === "function") {
       this.deleteResponse = { callback };
-      this.sendDelete();
+      this.#sendDelete();
     } else {
       return new Promise(
         (resolve: () => void, reject: (error: string) => void) => {
           this.deleteResponse = { resolve, reject };
-          this.sendDelete();
+          this.#sendDelete();
         },
       );
     }
   }
 
-  /**
-   * Set a merge strategy to resolve any merge conflicts that may occur due
-   * to offline work or write conflicts. The function will be called with the
-   * local record, the remote version/data and a callback to call once the merge has
-   * completed or if an error occurs ( which leaves it in an inconsistent state until
-   * the next update merge attempt ).
-   */
   setMergeStrategy(mergeStrategy: MergeStrategy): void {
     this.recordServices.mergeStrategy.setMergeStrategyByName(
       this.name,
@@ -440,11 +361,6 @@ export class RecordCore<Context = null> extends Emitter {
       callback,
     );
   }
-
-  /**
-   * Transition States
-   */
-
   onSubscribing(): void {
     this.recordServices.readRegistry.register(
       this.name,
@@ -458,7 +374,7 @@ export class RecordCore<Context = null> extends Emitter {
         name: this.name,
       },
     });
-    if (this.recordReadOnlyMode) {
+    if (this.#recordReadOnlyMode) {
       this.recordServices
         .bulkSubscriptionService[RECORD_ACTION.SUBSCRIBEANDREAD].subscribe(
           this.name,
@@ -471,7 +387,7 @@ export class RecordCore<Context = null> extends Emitter {
   }
 
   onResubscribing(): void {
-    this.services.timerRegistry.remove(this.readyTimer!);
+    this.services.timerRegistry.remove(this.#readyTimer!);
 
     this.recordServices.headRegistry.register(
       this.name,
@@ -493,9 +409,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.services.timeoutRegistry.clear(this.responseTimeout!);
     this.applyPendingWrites();
     this.isReady = true;
-
-    // We temporarily reset the data in order to allow the change callback
-    // to trigger all the subscriptions on the first response.
     this.applyChange(this.data, true, false);
 
     this.readyCallbacks.forEach(({ context, callback }) => {
@@ -577,10 +490,6 @@ export class RecordCore<Context = null> extends Emitter {
       message.action === RECORD_ACTION.ERASE
     ) {
       if (this.stateMachine.state === RECORD_STATE.MERGING) {
-        // The scenario this covers is when a read is requested because the head doesn't match
-        // but an update comes in because we subscribed. In that scenario we just ignore the update
-        // and wait for the read response. Hopefully the messages don't cross on the wire in which case
-        // it might result in another merge conflict.
         return;
       }
       this.applyUpdate(message as RecordWriteMessage);
@@ -633,8 +542,6 @@ export class RecordCore<Context = null> extends Emitter {
         this.services.timeoutRegistry.remove(actionMsg);
         this.services.logger.error(message);
       }
-
-      // handle message denied on record set with ack
       if (message.isWriteAck) {
         this.recordServices.writeAckService.recieve(message);
         return;
@@ -698,26 +605,14 @@ export class RecordCore<Context = null> extends Emitter {
         remoteVersion === -1 &&
         this.version === this.options.initialRecordVersion
       ) {
-        /**
-         * Record created while offline
-         */
         this.stateMachine.transition(RECORD_OFFLINE_ACTIONS.SUBSCRIBED);
         this.sendCreateUpdate(this.data);
       } else if (this.version === remoteVersion + 1) {
-        /**
-         * record updated by client while offline
-         */
         this.stateMachine.transition(RECORD_OFFLINE_ACTIONS.RESUBSCRIBED);
         this.sendUpdate(null, this.data);
       } else {
-        /**
-         * record updated by server when offline, get latest data
-         */
         this.stateMachine.transition(RECORD_OFFLINE_ACTIONS.INVALID_VERSION);
         if (remoteVersion !== -1) {
-          /**
-           * A read with version -1 would result in a read error
-           */
           this.sendRead();
           this.recordServices.readRegistry.register(
             this.name,
@@ -734,9 +629,6 @@ export class RecordCore<Context = null> extends Emitter {
       } else {
         this.stateMachine.transition(RECORD_OFFLINE_ACTIONS.INVALID_VERSION);
         if (remoteVersion < (this.version as number)) {
-          /**
-           *  deleted and created again remotely, up to merge conflict I guess
-           */
           this.recoverRecordDeletedRemotely();
         } else {
           this.sendRead();
@@ -760,7 +652,7 @@ export class RecordCore<Context = null> extends Emitter {
 
   saveUpdate(): void {
     if (!this.recordServices.dirtyService.isDirty(this.name)) {
-      (this.version as number)++;
+      this.version!++;
       this.recordServices.dirtyService.setDirty(this.name, true);
     }
     this.saveRecordToOffline();
@@ -771,7 +663,7 @@ export class RecordCore<Context = null> extends Emitter {
     data: RecordData,
     callback?: WriteAckCallback,
   ) {
-    if (this.recordReadOnlyMode) {
+    if (this.#recordReadOnlyMode) {
       this.services.logger.error(
         { topic: TOPIC.RECORD },
         EVENT.RECORD_READ_ONLY_MODE,
@@ -783,7 +675,7 @@ export class RecordCore<Context = null> extends Emitter {
     if (this.recordServices.dirtyService.isDirty(this.name)) {
       this.recordServices.dirtyService.setDirty(this.name, false);
     } else {
-      (this.version as number)++;
+      this.version!++;
     }
 
     const message = {
@@ -829,9 +721,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.recordServices.dirtyService.setDirty(this.name, false);
   }
 
-  /**
-   * Applies incoming updates and patches to the record's dataset
-   */
   applyUpdate(message: RecordWriteMessage) {
     const version = message.version;
     const data = message.parsedData as RecordData;
@@ -841,10 +730,6 @@ export class RecordCore<Context = null> extends Emitter {
     } else if (this.version + 1 !== version) {
       this.stateMachine.transition(RECORD_OFFLINE_ACTIONS.INVALID_VERSION);
       if (message.action === RECORD_ACTION.PATCH) {
-        /**
-         * Request a snapshot so that a merge can be done with the read reply which contains
-         * the full state of the record
-         */
         this.sendRead();
         this.recordServices.readRegistry.register(
           this.name,
@@ -870,10 +755,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.applyChange(newData);
   }
 
-  /**
-   * Compares the new values for every path with the previously stored ones and
-   * updates the subscribers if the value has changed
-   */
   applyChange(
     newData: RecordData,
     force = false,
@@ -901,8 +782,7 @@ export class RecordCore<Context = null> extends Emitter {
     }
   }
 
-  /** */
-  private sendDelete(): void {
+  #sendDelete(): void {
     this.whenReadyInternal(null, () => {
       this.services.storage.delete(this.name, () => {
         if (this.services.connection.isConnected) {
@@ -948,11 +828,6 @@ export class RecordCore<Context = null> extends Emitter {
     );
   }
 
-  /**
-   * Callback once the record merge has completed. If successful it will set the
-   * record state, else emit and error and the record will remain in an
-   * inconsistent state until the next update.
-   */
   onRecordRecovered(
     error: string | null,
     recordMessage: RecordMessage,
@@ -1024,7 +899,7 @@ export class RecordCore<Context = null> extends Emitter {
       return;
     }
 
-    if (this.recordReadOnlyMode) {
+    if (this.#recordReadOnlyMode) {
       this.services.logger.error(
         { topic: TOPIC.RECORD },
         EVENT.RECORD_READ_ONLY_MODE,
@@ -1037,10 +912,6 @@ export class RecordCore<Context = null> extends Emitter {
     this.sendUpdate(null, this.data, runFns);
   }
 
-  /**
-   * A quick check that's carried out by most methods that interact with the record
-   * to make sure it hasn't been destroyed yet - and to handle it gracefully if it has.
-   */
   checkDestroyed(methodName: string): boolean {
     if (this.stateMachine.inEndState) {
       this.services.logger.error(
@@ -1054,12 +925,8 @@ export class RecordCore<Context = null> extends Emitter {
     return false;
   }
 
-  /**
-   * Destroys the record and nulls all
-   * its dependencies
-   */
   destroy() {
-    this.services.timerRegistry.remove(this.readyTimer);
+    this.services.timerRegistry.remove(this.#readyTimer);
 
     this.services.timeoutRegistry.clear(this.responseTimeout!);
     this.services.timeoutRegistry.clear(this.deletedTimeout!);

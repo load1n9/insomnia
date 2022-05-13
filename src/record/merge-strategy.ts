@@ -12,9 +12,6 @@ export type MergeStrategy = (
   callback: MergeCompleteCallback,
 ) => void;
 
-/**
- *  Choose the server's state over the client's
- */
 export const REMOTE_WINS = (
   _localValue: RecordData,
   _localVersion: number,
@@ -24,9 +21,7 @@ export const REMOTE_WINS = (
 ): void => {
   callback(null, remoteValue);
 };
-/**
- *  Choose the local state over the server's
- */
+
 export const LOCAL_WINS = (
   localValue: RecordData,
   _localVersion: number,

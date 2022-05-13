@@ -1,6 +1,6 @@
 import { parse } from "../../protobuf/message-parser.ts";
 import { getMessage } from "../../protobuf/message-builder.ts";
-import { Socket } from "../deepstream-client.ts";
+import { Socket } from "../client.ts";
 import { CONNECTION_ACTION, JSONObject, Message, TOPIC } from "../constants.ts";
 import { Buffer } from "https://deno.land/std@0.139.0/node/buffer.ts";
 
@@ -35,8 +35,6 @@ export const socketFactory: SocketFactory = (
   }, false);
   let pingInterval: number | null = null;
   let lastRecievedMessageTimestamp = -1;
-
-  // tslint:disable-next-line:no-empty
   socket.onparsedmessage = () => {};
   socket.onmessage = (raw: { data: Buffer | string }) => {
     lastRecievedMessageTimestamp = Date.now();
@@ -44,7 +42,7 @@ export const socketFactory: SocketFactory = (
     if (options.jsonTransportMode !== true) {
       parseResults = parse(
         BrowserWebsocket
-          ? new Buffer(new Uint8Array(raw.data as Buffer))
+          ? Buffer.from(new Uint8Array(raw.data as Buffer))
           : raw.data as Buffer,
       );
     } else {
@@ -52,10 +50,11 @@ export const socketFactory: SocketFactory = (
     }
     socket.onparsedmessages(parseResults);
   };
-  socket.getTimeSinceLastMessage = () => {
-    if (lastRecievedMessageTimestamp < 0) return 0;
-    return Date.now() - lastRecievedMessageTimestamp;
-  };
+  socket.getTimeSinceLastMessage = () =>
+    lastRecievedMessageTimestamp < 0
+      ? 0
+      : Date.now() - lastRecievedMessageTimestamp;
+
   socket.sendParsedMessage = (message: Message): void => {
     if (
       message.topic === TOPIC.CONNECTION &&
@@ -71,9 +70,6 @@ export const socketFactory: SocketFactory = (
     if (message.parsedData) {
       message.data = JSON.stringify(message.parsedData);
     }
-    // if (message.action !== CONNECTION_ACTIONS.PONG && message.action !== CONNECTION_ACTIONS.PING) {
-    //     console.log('>>>', TOPIC[message.topic], (ACTIONS as any)[message.topic][message.action], message.parsedData, message.data, message.name)
-    // }
     if (message.data === undefined) {
       delete message.data;
     }

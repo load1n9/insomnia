@@ -1,19 +1,20 @@
-import {
-  TopicMessage
-} from './protobuf-map.ts'
+import { TopicMessage } from "./protobuf-map.ts";
 
-import { Message } from './protobuf.js'
+import { Message } from "./protobuf.js";
 
 // deno-lint-ignore no-explicit-any
-export function getMessage (message: any, isAck: boolean): Uint8Array {
+export function getMessage(message: any, isAck: boolean): Uint8Array {
   if (isAck && !message.isAck) {
-    message = { ...message, isAck: true }
+    message = { ...message, isAck: true };
   }
   if (message.data === undefined && message.parsedData !== undefined) {
-    message.data = JSON.stringify(message.parsedData)
+    message.data = JSON.stringify(message.parsedData);
   }
 
-  const serializedMessage = TopicMessage[message.topic].encode(message).finish()
-  const x = Message.encodeDelimited({ topic: message.topic, message: serializedMessage }).finish()
-  return x
+  const serializedMessage = TopicMessage[message.topic].encode(message)
+    .finish();
+  return Message.encodeDelimited({
+    topic: message.topic,
+    message: serializedMessage,
+  }).finish();
 }

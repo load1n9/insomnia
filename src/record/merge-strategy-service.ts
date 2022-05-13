@@ -1,4 +1,4 @@
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { EVENT, RecordData, TOPIC } from "../constants.ts";
 
 import { MergeStrategy } from "./merge-strategy.ts";
@@ -13,24 +13,24 @@ export type MergeCompleteInternal = (
   localData: RecordData,
 ) => void;
 export class MergeStrategyService {
-  private services: Services;
-  private strategiesByRecord: Map<string, MergeStrategy>;
-  private strategiesByPattern: Map<RegExp, MergeStrategy>;
-  private defaultStrategy: MergeStrategy | null;
+  #services: Services;
+  #strategiesByRecord: Map<string, MergeStrategy>;
+  #strategiesByPattern: Map<RegExp, MergeStrategy>;
+  #defaultStrategy: MergeStrategy | null;
 
   constructor(services: Services, defaultStrategy: MergeStrategy | null) {
-    this.services = services;
-    this.defaultStrategy = defaultStrategy;
-    this.strategiesByRecord = new Map();
-    this.strategiesByPattern = new Map();
+    this.#services = services;
+    this.#defaultStrategy = defaultStrategy;
+    this.#strategiesByRecord = new Map();
+    this.#strategiesByPattern = new Map();
   }
 
   setMergeStrategyByName(recordName: string, strategy: MergeStrategy) {
-    this.strategiesByRecord.set(recordName, strategy);
+    this.#strategiesByRecord.set(recordName, strategy);
   }
 
   setMergeStrategyByPattern(pattern: RegExp, strategy: MergeStrategy) {
-    this.strategiesByPattern.set(pattern, strategy);
+    this.#strategiesByPattern.set(pattern, strategy);
   }
 
   merge(
@@ -43,7 +43,7 @@ export class MergeStrategyService {
   ): void {
     const { name: recordName } = remoteRecord;
 
-    const exactMergeStrategy = this.strategiesByRecord.get(recordName);
+    const exactMergeStrategy = this.#strategiesByRecord.get(recordName);
     if (exactMergeStrategy) {
       exactMergeStrategy(
         localData,
@@ -64,7 +64,7 @@ export class MergeStrategyService {
       return;
     }
 
-    for (const [pattern, patternMergeStrategy] of this.strategiesByPattern) {
+    for (const [pattern, patternMergeStrategy] of this.#strategiesByPattern) {
       if (pattern.test(recordName)) {
         patternMergeStrategy(
           localData,
@@ -86,8 +86,8 @@ export class MergeStrategyService {
       }
     }
 
-    if (this.defaultStrategy) {
-      this.defaultStrategy(
+    if (this.#defaultStrategy) {
+      this.#defaultStrategy(
         localData,
         localVersion,
         remoteRecord.parsedData as JSONObject,
@@ -106,7 +106,7 @@ export class MergeStrategyService {
       return;
     }
 
-    this.services.logger.error(
+    this.#services.logger.error(
       { topic: TOPIC.RECORD },
       EVENT.RECORD_VERSION_EXISTS,
       { remoteVersion: remoteRecord.version!, recordName },

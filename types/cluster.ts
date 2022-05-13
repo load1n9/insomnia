@@ -1,4 +1,4 @@
 export enum CLUSTER_ACTION {
-    REMOVE = 1,
-    STATUS = 2,
+  REMOVE = 1,
+  STATUS = 2,
 }

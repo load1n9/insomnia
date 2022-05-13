@@ -10,7 +10,7 @@ import {
   RecordPathData,
   TOPIC,
 } from "../constants.ts";
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { Options } from "../client-options.ts";
 import { RecordCore, WriteAckCallback } from "./record-core.ts";
 import { Record } from "./record.ts";

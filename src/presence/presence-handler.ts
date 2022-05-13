@@ -1,5 +1,5 @@
 import { EVENT, Message, PRESENCE_ACTION as PA, TOPIC } from "../constants.ts";
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 import { Options } from "../client-options.ts";
 import { Emitter } from "../util/emitter.ts";
 import { BulkSubscriptionService } from "../util/bulk-subscription-service.ts";
@@ -43,32 +43,34 @@ function validateQueryArguments(
 }
 
 export class PresenceHandler {
-  private globalSubscriptionEmitter = new Emitter();
-  private subscriptionEmitter = new Emitter();
-  private queryEmitter = new Emitter();
-  private queryAllEmitter = new Emitter();
-  private counter = 0;
-  private limboQueue: Message[] = [];
-  private readonly bulkSubscription: BulkSubscriptionService<PA>;
+  #globalSubscriptionEmitter = new Emitter();
+  #subscriptionEmitter = new Emitter();
+  #queryEmitter = new Emitter();
+  #queryAllEmitter = new Emitter();
+  #counter = 0;
+  #limboQueue: Message[] = [];
+  readonly #bulkSubscription: BulkSubscriptionService<PA>;
+  #services: Services;
 
-  constructor(private services: Services, options: Options) {
-    this.bulkSubscription = new BulkSubscriptionService<PA>(
-      this.services,
+  constructor(services: Services, options: Options) {
+    this.#services = services;
+    this.#bulkSubscription = new BulkSubscriptionService<PA>(
+      this.#services,
       options.subscriptionInterval,
       TOPIC.PRESENCE,
       PA.SUBSCRIBE,
       PA.UNSUBSCRIBE,
-      this.onBulkSubscriptionSent.bind(this),
+      this.#onBulkSubscriptionSent.bind(this),
     );
 
-    this.services.connection.registerHandler(
+    this.#services.connection.registerHandler(
       TOPIC.PRESENCE,
-      this.handle.bind(this),
+      this.#handle.bind(this),
     );
-    this.services.connection.onExitLimbo(this.onExitLimbo.bind(this));
-    this.services.connection.onLost(this.onExitLimbo.bind(this));
-    this.services.connection.onReestablished(
-      this.onConnectionReestablished.bind(this),
+    this.#services.connection.onExitLimbo(this.#onExitLimbo.bind(this));
+    this.#services.connection.onLost(this.#onExitLimbo.bind(this));
+    this.#services.connection.onReestablished(
+      this.#onConnectionReestablished.bind(this),
     );
   }
 
@@ -83,20 +85,20 @@ export class PresenceHandler {
       typeof callback === "function"
     ) {
       const user = userOrCallback;
-      if (!this.subscriptionEmitter.hasListeners(user)) {
-        this.bulkSubscription.subscribe(user);
+      if (!this.#subscriptionEmitter.hasListeners(user)) {
+        this.#bulkSubscription.subscribe(user);
       }
-      this.subscriptionEmitter.on(user, callback);
+      this.#subscriptionEmitter.on(user, callback);
       return;
     }
 
     if (
       typeof userOrCallback === "function" && typeof callback === "undefined"
     ) {
-      if (!this.globalSubscriptionEmitter.hasListeners(ONLY_EVENT)) {
-        this.subscribeToAllChanges();
+      if (!this.#globalSubscriptionEmitter.hasListeners(ONLY_EVENT)) {
+        this.#subscribeToAllChanges();
       }
-      this.globalSubscriptionEmitter.on(ONLY_EVENT, userOrCallback);
+      this.#globalSubscriptionEmitter.on(ONLY_EVENT, userOrCallback);
       return;
     }
 
@@ -119,21 +121,21 @@ export class PresenceHandler {
         if (typeof callback !== "function") {
           throw new Error('invalid argument: "callback"');
         }
-        this.subscriptionEmitter.off(user, callback);
+        this.#subscriptionEmitter.off(user, callback);
       } else {
-        this.subscriptionEmitter.off(user);
+        this.#subscriptionEmitter.off(user);
       }
-      if (!this.subscriptionEmitter.hasListeners(user)) {
-        this.bulkSubscription.unsubscribe(user);
+      if (!this.#subscriptionEmitter.hasListeners(user)) {
+        this.#bulkSubscription.unsubscribe(user);
         return;
       }
     }
 
     if (userOrCallback && typeof userOrCallback === "function") {
       callback = userOrCallback;
-      this.globalSubscriptionEmitter.off(ONLY_EVENT, callback);
-      if (!this.globalSubscriptionEmitter.hasListeners(ONLY_EVENT)) {
-        this.unsubscribeToAllChanges();
+      this.#globalSubscriptionEmitter.off(ONLY_EVENT, callback);
+      if (!this.#globalSubscriptionEmitter.hasListeners(ONLY_EVENT)) {
+        this.#unsubscribeToAllChanges();
       }
       return;
     }
@@ -141,13 +143,13 @@ export class PresenceHandler {
     if (
       typeof userOrCallback === "undefined" && typeof callback === "undefined"
     ) {
-      this.subscriptionEmitter.off();
-      this.globalSubscriptionEmitter.off();
+      this.#subscriptionEmitter.off();
+      this.#globalSubscriptionEmitter.off();
 
-      this.bulkSubscription.unsubscribeList(
-        this.subscriptionEmitter.eventNames(),
+      this.#bulkSubscription.unsubscribeList(
+        this.#subscriptionEmitter.eventNames(),
       );
-      this.unsubscribeToAllChanges();
+      this.#unsubscribeToAllChanges();
       return;
     }
 
@@ -177,30 +179,30 @@ export class PresenceHandler {
     let emitterAction: string;
 
     if (users) {
-      const queryId = (this.counter++).toString();
+      const queryId = (this.#counter++).toString();
       message = {
         topic: TOPIC.PRESENCE,
         action: PA.QUERY,
         correlationId: queryId,
         names: users,
       };
-      emitter = this.queryEmitter;
+      emitter = this.#queryEmitter;
       emitterAction = queryId;
     } else {
       message = {
         topic: TOPIC.PRESENCE,
         action: PA.QUERY_ALL,
       };
-      emitter = this.queryAllEmitter;
+      emitter = this.#queryAllEmitter;
       emitterAction = ONLY_EVENT;
     }
 
-    if (this.services.connection.isConnected) {
-      this.sendQuery(message);
-    } else if (this.services.connection.isInLimbo) {
-      this.limboQueue.push(message);
+    if (this.#services.connection.isConnected) {
+      this.#sendQuery(message);
+    } else if (this.#services.connection.isInLimbo) {
+      this.#limboQueue.push(message);
     } else {
-      this.services.timerRegistry.requestIdleCallback(() => {
+      this.#services.timerRegistry.requestIdleCallback(() => {
         emitter.emit(emitterAction, EVENT.CLIENT_OFFLINE);
       });
     }
@@ -223,40 +225,44 @@ export class PresenceHandler {
     );
   }
 
-  private handle(message: Message): void {
+  #handle(message: Message): void {
     if (message.isAck) {
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       return;
     }
 
     if (message.action === PA.QUERY_ALL_RESPONSE) {
-      this.queryAllEmitter.emit(ONLY_EVENT, null, message.names);
-      this.services.timeoutRegistry.remove(message);
+      this.#queryAllEmitter.emit(ONLY_EVENT, null, message.names);
+      this.#services.timeoutRegistry.remove(message);
       return;
     }
 
     if (message.action === PA.QUERY_RESPONSE) {
-      this.queryEmitter.emit(
+      this.#queryEmitter.emit(
         message.correlationId as string,
         null,
         message.parsedData,
       );
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       return;
     }
 
     if (message.action === PA.PRESENCE_JOIN) {
-      this.subscriptionEmitter.emit(message.name as string, message.name, true);
+      this.#subscriptionEmitter.emit(
+        message.name as string,
+        message.name,
+        true,
+      );
       return;
     }
 
     if (message.action === PA.PRESENCE_JOIN_ALL) {
-      this.globalSubscriptionEmitter.emit(ONLY_EVENT, message.name, true);
+      this.#globalSubscriptionEmitter.emit(ONLY_EVENT, message.name, true);
       return;
     }
 
     if (message.action === PA.PRESENCE_LEAVE) {
-      this.subscriptionEmitter.emit(
+      this.#subscriptionEmitter.emit(
         message.name as string,
         message.name,
         false,
@@ -265,80 +271,80 @@ export class PresenceHandler {
     }
 
     if (message.action === PA.PRESENCE_LEAVE_ALL) {
-      this.globalSubscriptionEmitter.emit(ONLY_EVENT, message.name, false);
+      this.#globalSubscriptionEmitter.emit(ONLY_EVENT, message.name, false);
       return;
     }
 
     if (message.isError) {
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       if (message.originalAction === PA.QUERY) {
-        this.queryEmitter.emit(
+        this.#queryEmitter.emit(
           message.correlationId as string,
           PA[message.action],
         );
       } else if (message.originalAction === PA.QUERY_ALL) {
-        this.queryAllEmitter.emit(ONLY_EVENT, PA[message.action]);
+        this.#queryAllEmitter.emit(ONLY_EVENT, PA[message.action]);
       } else {
-        this.services.logger.error(message);
+        this.#services.logger.error(message);
       }
       return;
     }
 
-    this.services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
+    this.#services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
   }
 
-  private sendQuery(message: Message) {
-    this.services.connection.sendMessage(message);
-    this.services.timeoutRegistry.add({ message });
+  #sendQuery(message: Message) {
+    this.#services.connection.sendMessage(message);
+    this.#services.timeoutRegistry.add({ message });
   }
 
-  private subscribeToAllChanges() {
-    if (!this.services.connection.isConnected) {
+  #subscribeToAllChanges() {
+    if (!this.#services.connection.isConnected) {
       return;
     }
     const message = { topic: TOPIC.PRESENCE, action: PA.SUBSCRIBE_ALL };
-    this.services.timeoutRegistry.add({ message });
-    this.services.connection.sendMessage(message);
+    this.#services.timeoutRegistry.add({ message });
+    this.#services.connection.sendMessage(message);
   }
 
-  private unsubscribeToAllChanges() {
-    if (!this.services.connection.isConnected) {
+  #unsubscribeToAllChanges() {
+    if (!this.#services.connection.isConnected) {
       return;
     }
     const message = { topic: TOPIC.PRESENCE, action: PA.UNSUBSCRIBE_ALL };
-    this.services.timeoutRegistry.add({ message });
-    this.services.connection.sendMessage(message);
+    this.#services.timeoutRegistry.add({ message });
+    this.#services.connection.sendMessage(message);
   }
 
-  private onConnectionReestablished() {
-    const keys = this.subscriptionEmitter.eventNames();
+  #onConnectionReestablished() {
+    const keys = this.#subscriptionEmitter.eventNames();
     if (keys.length > 0) {
-      this.bulkSubscription.subscribeList(keys);
+      this.#bulkSubscription.subscribeList(keys);
     }
 
-    const hasGlobalSubscription = this.globalSubscriptionEmitter.hasListeners(
+    const hasGlobalSubscription = this.#globalSubscriptionEmitter.hasListeners(
       ONLY_EVENT,
     );
     if (hasGlobalSubscription) {
-      this.subscribeToAllChanges();
+      this.#subscribeToAllChanges();
     }
-    for (let i = 0; i < this.limboQueue.length; i++) {
-      this.sendQuery(this.limboQueue[i]);
+    for (let i = 0; i < this.#limboQueue.length; i++) {
+      this.#sendQuery(this.#limboQueue[i]);
     }
-    this.limboQueue = [];
+    this.#limboQueue = [];
   }
 
-  private onExitLimbo() {
-    this.queryEmitter.eventNames().forEach((correlationId) => {
-      this.queryEmitter.emit(correlationId, EVENT.CLIENT_OFFLINE);
+  #onExitLimbo() {
+    this.#queryEmitter.eventNames().forEach((correlationId) => {
+      this.#queryEmitter.emit(correlationId, EVENT.CLIENT_OFFLINE);
     });
-    this.queryAllEmitter.emit(ONLY_EVENT, EVENT.CLIENT_OFFLINE);
-    this.limboQueue = [];
-    this.queryAllEmitter.off();
-    this.queryEmitter.off();
+    this.#queryAllEmitter.emit(ONLY_EVENT, EVENT.CLIENT_OFFLINE);
+    this.#limboQueue = [];
+    this.#queryAllEmitter.off();
+    this.#queryEmitter.off();
   }
 
-  private onBulkSubscriptionSent(message: Message) {
-    this.services.timeoutRegistry.add({ message });
+  #onBulkSubscriptionSent(message: Message) {
+    this.#services.timeoutRegistry.add({ message });
   }
 }

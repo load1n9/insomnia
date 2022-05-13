@@ -6,7 +6,7 @@ import {
   RECORD_ACTION,
   TOPIC,
 } from "../constants.ts";
-import { Services } from "../deepstream-client.ts";
+import { Services } from "../client.ts";
 
 export interface ListenResponse {
   accept: () => void;
@@ -20,27 +20,27 @@ export type ListenCallback = (
 ) => void;
 
 export class Listener {
-  private topic: TOPIC;
-  private actions: any;
-  private services: Services;
-  private listeners: Map<string, ListenCallback>; // <pattern, callback>
-  private stopCallbacks: Map<string, Function>; // <subscription, callback>
+  #topic: TOPIC;
+  #actions: any;
+  #services: Services;
+  #listeners: Map<string, ListenCallback>;
+  #stopCallbacks: Map<string, Function>;
 
   constructor(topic: TOPIC, services: Services) {
-    this.topic = topic;
-    this.services = services;
-    this.listeners = new Map<string, ListenCallback>();
-    this.stopCallbacks = new Map<string, Function>();
+    this.#topic = topic;
+    this.#services = services;
+    this.#listeners = new Map<string, ListenCallback>();
+    this.#stopCallbacks = new Map<string, Function>();
 
     if (topic === TOPIC.RECORD) {
-      this.actions = RECORD_ACTION;
+      this.#actions = RECORD_ACTION;
     } else if (topic === TOPIC.EVENT) {
-      this.actions = EVENT_ACTION;
+      this.#actions = EVENT_ACTION;
     }
 
-    this.services.connection.onLost(this.onConnectionLost.bind(this));
-    this.services.connection.onReestablished(
-      this.onConnectionReestablished.bind(this),
+    this.#services.connection.onLost(this.#onConnectionLost.bind(this));
+    this.#services.connection.onReestablished(
+      this.#onConnectionReestablished.bind(this),
     );
   }
 
@@ -52,17 +52,17 @@ export class Listener {
       throw new Error("invalid argument callback");
     }
 
-    if (this.listeners.has(pattern)) {
-      this.services.logger.warn({
-        topic: this.topic,
-        action: this.actions.LISTEN,
+    if (this.#listeners.has(pattern)) {
+      this.#services.logger.warn({
+        topic: this.#topic,
+        action: this.#actions.LISTEN,
         name: pattern,
       }, EVENT.LISTENER_EXISTS);
       return;
     }
 
-    this.listeners.set(pattern, callback);
-    this.sendListen(pattern);
+    this.#listeners.set(pattern, callback);
+    this.#sendListen(pattern);
   }
 
   unlisten(pattern: string): void {
@@ -70,121 +70,105 @@ export class Listener {
       throw new Error("invalid argument pattern");
     }
 
-    if (!this.listeners.has(pattern)) {
-      this.services.logger.warn({
-        topic: this.topic,
-        action: this.actions.UNLISTEN,
+    if (!this.#listeners.has(pattern)) {
+      this.#services.logger.warn({
+        topic: this.#topic,
+        action: this.#actions.UNLISTEN,
         name: pattern,
       }, EVENT.NOT_LISTENING);
       return;
     }
 
-    this.listeners.delete(pattern);
-    this.sendUnlisten(pattern);
+    this.#listeners.delete(pattern);
+    this.#sendUnlisten(pattern);
   }
 
-  /*
- * Accepting a listener request informs deepstream that the current provider is willing to
- * provide the record or event matching the subscriptionName . This will establish the current
- * provider as the only publisher for the actual subscription with the deepstream cluster.
- * Either accept or reject needs to be called by the listener
- */
-  private accept(pattern: string, subscription: string): void {
-    this.services.connection.sendMessage({
-      topic: this.topic,
-      action: this.actions.LISTEN_ACCEPT,
+  #accept(pattern: string, subscription: string): void {
+    this.#services.connection.sendMessage({
+      topic: this.#topic,
+      action: this.#actions.LISTEN_ACCEPT,
       name: pattern,
       subscription,
     });
   }
 
-  /*
- * Rejecting a listener request informs deepstream that the current provider is not willing
- * to provide the record or event matching the subscriptionName . This will result in deepstream
- * requesting another provider to do so instead. If no other provider accepts or exists, the
- * resource will remain unprovided.
- * Either accept or reject needs to be called by the listener
- */
-  private reject(pattern: string, subscription: string): void {
-    this.services.connection.sendMessage({
-      topic: this.topic,
-      action: this.actions.LISTEN_REJECT,
+  #reject(pattern: string, subscription: string): void {
+    this.#services.connection.sendMessage({
+      topic: this.#topic,
+      action: this.#actions.LISTEN_REJECT,
       name: pattern,
       subscription,
     });
   }
 
-  private stop(subscription: string, callback: Function): void {
-    this.stopCallbacks.set(subscription, callback);
+  #stop(subscription: string, callback: Function): void {
+    this.#stopCallbacks.set(subscription, callback);
   }
 
   handle(message: ListenMessage) {
     if (message.isAck) {
-      this.services.timeoutRegistry.remove(message);
+      this.#services.timeoutRegistry.remove(message);
       return;
     }
-    if (message.action === this.actions.SUBSCRIPTION_FOR_PATTERN_FOUND) {
-      const listener = this.listeners.get(message.name as string);
+    if (message.action === this.#actions.SUBSCRIPTION_FOR_PATTERN_FOUND) {
+      const listener = this.#listeners.get(message.name as string);
       if (listener) {
         listener(
           message.subscription as string,
           {
-            accept: this.accept.bind(this, message.name, message.subscription),
-            reject: this.reject.bind(this, message.name, message.subscription),
-            onStop: this.stop.bind(this, message.subscription),
+            accept: this.#accept.bind(this, message.name, message.subscription),
+            reject: this.#reject.bind(this, message.name, message.subscription),
+            onStop: this.#stop.bind(this, message.subscription),
           },
         );
       }
       return;
     }
 
-    if (message.action === this.actions.SUBSCRIPTION_FOR_PATTERN_REMOVED) {
-      const stopCallback = this.stopCallbacks.get(
+    if (message.action === this.#actions.SUBSCRIPTION_FOR_PATTERN_REMOVED) {
+      const stopCallback = this.#stopCallbacks.get(
         message.subscription as string,
       );
       if (stopCallback) {
         stopCallback(message.subscription);
-        this.stopCallbacks.delete(message.subscription as string);
+        this.#stopCallbacks.delete(message.subscription as string);
       }
       return;
     }
 
-    this.services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
+    this.#services.logger.error(message, EVENT.UNSOLICITED_MESSAGE);
   }
 
-  private onConnectionLost() {
-    this.stopCallbacks.forEach((callback, subscription) => {
+  #onConnectionLost() {
+    this.#stopCallbacks.forEach((callback, subscription) => {
       callback(subscription);
     });
-    this.stopCallbacks.clear();
+    this.#stopCallbacks.clear();
   }
 
-  private onConnectionReestablished() {
-    this.listeners.forEach((_callback, pattern) => {
-      this.sendListen(pattern);
+  #onConnectionReestablished() {
+    this.#listeners.forEach((_callback, pattern) => {
+      this.#sendListen(pattern);
     });
   }
 
-  /*
-  * Sends a C.ACTIONS.LISTEN to deepstream.
-  */
-  private sendListen(pattern: string): void {
+  #sendListen(pattern: string): void {
     const message = {
-      topic: this.topic,
-      action: this.actions.LISTEN,
+      topic: this.#topic,
+      action: this.#actions.LISTEN,
       name: pattern,
     };
-    this.services.timeoutRegistry.add({ message });
-    this.services.connection.sendMessage(message);
+    this.#services.timeoutRegistry.add({ message });
+    this.#services.connection.sendMessage(message);
   }
 
-  private sendUnlisten(pattern: string): void {
+  #sendUnlisten(pattern: string): void {
     const message = {
-      topic: this.topic,
-      action: this.actions.UNLISTEN,
+      topic: this.#topic,
+      action: this.#actions.UNLISTEN,
       name: pattern,
     };
-    this.services.timeoutRegistry.add({ message });
-    this.services.connection.sendMessage(message);
+    this.#services.timeoutRegistry.add({ message });
+    this.#services.connection.sendMessage(message);
   }
 }

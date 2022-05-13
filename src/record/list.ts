@@ -6,24 +6,24 @@ import { Emitter } from "../util/emitter.ts";
 
 export class List extends Emitter {
   debugId: any;
-  private wrappedFunctions: Map<Function, Function> = new Map();
-  private originalApplyUpdate: Function;
-  private beforeStructure: any;
-
-  private hasAddListener = false;
-  private hasRemoveListener = false;
-  private hasMoveListener = false;
-  private subscriptions: utils.RecordSubscribeArguments[] = [];
-
-  constructor(private record: RecordCore<List>) {
+  #wrappedFunctions: Map<Function, Function> = new Map();
+  #originalApplyUpdate: Function;
+  #beforeStructure: any;
+  #hasAddListener = false;
+  #hasRemoveListener = false;
+  #hasMoveListener = false;
+  #subscriptions: utils.RecordSubscribeArguments[] = [];
+  #record: RecordCore<List>;
+  constructor(record: RecordCore<List>) {
     super();
-    this.debugId = this.record.getDebugId();
-    this.originalApplyUpdate = this.record.applyUpdate.bind(this.record);
-    this.record.applyUpdate = this.applyUpdate.bind(this);
-    this.record.addReference(this);
-    this.record.on("discard", () => this.emit("discard", this), this);
-    this.record.on("delete", () => this.emit("delete", this), this);
-    this.record.on(
+    this.#record = record;
+    this.debugId = this.#record.getDebugId();
+    this.#originalApplyUpdate = this.#record.applyUpdate.bind(this.#record);
+    this.#record.applyUpdate = this.#applyUpdate.bind(this);
+    this.#record.addReference(this);
+    this.#record.on("discard", () => this.emit("discard", this), this);
+    this.#record.on("delete", () => this.emit("delete", this), this);
+    this.#record.on(
       "error",
       (...args: any[]) => this.emit("error", ...args),
       this,
@@ -31,63 +31,48 @@ export class List extends Emitter {
   }
 
   get name(): string {
-    return this.record.name;
+    return this.#record.name;
   }
 
   get isReady(): boolean {
-    return this.record.isReady;
+    return this.#record.isReady;
   }
 
   get version(): number {
-    return this.record.version as number;
+    return this.#record.version as number;
   }
 
   whenReady(): Promise<List>;
   whenReady(callback: ((list: List) => void)): void;
   whenReady(callback?: ((list: List) => void)): void | Promise<List> {
     if (callback) {
-      this.record.whenReady(this, callback);
+      this.#record.whenReady(this, callback);
     } else {
-      return this.record.whenReady(this);
+      return this.#record.whenReady(this);
     }
   }
 
   discard(): void {
-    this.destroy();
-    this.record.removeReference(this);
+    this.#destroy();
+    this.#record.removeReference(this);
   }
 
   delete(callback: (error: string | null) => void): void;
   delete(): Promise<void>;
   delete(callback?: (error: string | null) => void): void | Promise<void> {
-    this.destroy();
-    return this.record.delete(callback);
+    this.#destroy();
+    return this.#record.delete(callback);
   }
 
-  /**
-   * Returns the array of list entries or an
-   * empty array if the list hasn't been populated yet.
-   */
   getEntries(): string[] {
-    const entries = this.record.get();
-
-    if (!(entries instanceof Array)) {
-      return [];
-    }
-
-    return entries as string[];
+    const entries = this.#record.get();
+    return !(entries instanceof Array) ? [] : entries as string[];
   }
 
-  /**
-   * Returns true if the list is empty
-   */
   isEmpty(): boolean {
     return this.getEntries().length === 0;
   }
 
-  /**
-   * Updates the list with a new set of entries
-   */
   setEntriesWithAck(entries: string[]): Promise<void>;
   setEntriesWithAck(entries: string[], callback: WriteAckCallback): void;
   setEntriesWithAck(
@@ -108,9 +93,6 @@ export class List extends Emitter {
     this.setEntries(entries, callback);
   }
 
-  /**
-   * Updates the list with a new set of entries
-   */
   setEntries(entries: string[], callback?: WriteAckCallback) {
     const errorMsg = "entries must be an array of record names";
     let i;
@@ -125,20 +107,14 @@ export class List extends Emitter {
       }
     }
 
-    this.beforeChange();
-    this.record.set({ data: entries, callback });
-    this.afterChange();
+    this.#beforeChange();
+    this.#record.set({ data: entries, callback });
+    this.#afterChange();
   }
 
-  /**
-   * Removes an entry from the list
-   *
-   * @param {String} entry
-   * @param {Number} [index]
-   */
   removeEntry(entry: string, index?: number, callback?: WriteAckCallback) {
-    const currentEntries: string[] = this.record.get() as string[];
-    const hasIndex = this.hasIndex(index);
+    const currentEntries: string[] = this.#record.get() as string[];
+    const hasIndex = this.#hasIndex(index);
     const entries: string[] = [];
     let i;
 
@@ -147,38 +123,28 @@ export class List extends Emitter {
         entries.push(currentEntries[i]);
       }
     }
-    this.beforeChange();
-    this.record.set({ data: entries, callback });
-    this.afterChange();
+    this.#beforeChange();
+    this.#record.set({ data: entries, callback });
+    this.#afterChange();
   }
 
-  /**
-   * Adds an entry to the list
-   *
-   * @param {String} entry
-   * @param {Number} [index]
-   */
   addEntry(entry: string, index?: number, callback?: WriteAckCallback) {
     if (typeof entry !== "string") {
       throw new Error("Entry must be a recordName");
     }
 
-    const hasIndex = this.hasIndex(index);
+    const hasIndex = this.#hasIndex(index);
     const entries = this.getEntries();
     if (hasIndex) {
       entries.splice(index as number, 0, entry);
     } else {
       entries.push(entry);
     }
-    this.beforeChange();
-    this.record.set({ data: entries, callback });
-    this.afterChange();
+    this.#beforeChange();
+    this.#record.set({ data: entries, callback });
+    this.#afterChange();
   }
 
-  /**
-   * Proxies the underlying Record's subscribe method. Makes sure
-   * that no path is provided
-   */
   subscribe(_callback: (entries: string[]) => void) {
     const parameters = utils.normalizeArguments(arguments);
 
@@ -186,31 +152,17 @@ export class List extends Emitter {
       throw new Error("path is not supported for List.subscribe");
     }
 
-    // Make sure the callback is invoked with an empty array for new records
     const listCallback = function (scope: any, cb: Function) {
       cb(scope.getEntries());
     }.bind(this, this, parameters.callback);
 
-    /**
-     * Adding a property onto a function directly is terrible practice,
-     * and we will change this as soon as we have a more seperate approach
-     * of creating lists that doesn't have records default state.
-     *
-     * The reason we are holding a referencing to wrapped array is so that
-     * on unsubscribe it can provide a reference to the actual method the
-     * record is subscribed too.
-     */
-    this.wrappedFunctions.set(parameters.callback, listCallback);
+    this.#wrappedFunctions.set(parameters.callback, listCallback);
     parameters.callback = listCallback;
 
-    this.subscriptions.push(parameters);
-    this.record.subscribe(parameters, this);
+    this.#subscriptions.push(parameters);
+    this.#record.subscribe(parameters, this);
   }
 
-  /**
-   * Proxies the underlying Record's unsubscribe method. Makes sure
-   * that no path is provided
-   */
   unsubscribe(_callback: (entries: string[]) => void) {
     const parameters = utils.normalizeArguments(arguments);
 
@@ -218,39 +170,30 @@ export class List extends Emitter {
       throw new Error("path is not supported for List.unsubscribe");
     }
 
-    const listenCallback = this.wrappedFunctions.get(parameters.callback);
+    const listenCallback = this.#wrappedFunctions.get(parameters.callback);
     parameters.callback = listenCallback as (data: any) => void;
-    this.wrappedFunctions.delete(parameters.callback);
-    this.subscriptions = this.subscriptions.filter((subscription: any) => {
-      if (
-        parameters.callback && parameters.callback !== subscription.callback
-      ) {
-        return true;
-      }
-      return false;
-    });
+    this.#wrappedFunctions.delete(parameters.callback);
+    this.#subscriptions = this.#subscriptions.filter(
+      (subscription: any): boolean => {
+        return parameters.callback &&
+          parameters.callback !== subscription.callback;
+      },
+    );
 
-    this.record.unsubscribe(parameters, this);
+    this.#record.unsubscribe(parameters, this);
   }
 
-  /**
-   * Proxies the underlying Record's _update method. Set's
-   * data to an empty array if no data is provided.
-   */
-  private applyUpdate(message: RecordMessage) {
+  #applyUpdate(message: RecordMessage) {
     if (!(message.parsedData instanceof Array)) {
       message.parsedData = [];
     }
 
-    this.beforeChange();
-    this.originalApplyUpdate(message);
-    this.afterChange();
+    this.#beforeChange();
+    this.#originalApplyUpdate(message);
+    this.#afterChange();
   }
 
-  /**
-   * Validates that the index provided is within the current set of entries.
-   */
-  private hasIndex(index?: number) {
+  #hasIndex(index?: number) {
     let hasIndex = false;
     const entries = this.getEntries();
     if (index !== undefined) {
@@ -265,40 +208,31 @@ export class List extends Emitter {
     return hasIndex;
   }
 
-  /**
-   * Establishes the current structure of the list, provided the client has attached any
-   * add / move / remove listener
-   *
-   * This will be called before any change to the list, regardsless if the change was triggered
-   * by an incoming message from the server or by the client
-   */
-  private beforeChange(): void {
-    this.hasAddListener = this.hasListeners(EVENT.ENTRY_ADDED_EVENT);
-    this.hasRemoveListener = this.hasListeners(EVENT.ENTRY_REMOVED_EVENT);
-    this.hasMoveListener = this.hasListeners(EVENT.ENTRY_MOVED_EVENT);
+  #beforeChange(): void {
+    this.#hasAddListener = this.hasListeners(EVENT.ENTRY_ADDED_EVENT);
+    this.#hasRemoveListener = this.hasListeners(EVENT.ENTRY_REMOVED_EVENT);
+    this.#hasMoveListener = this.hasListeners(EVENT.ENTRY_MOVED_EVENT);
 
-    if (this.hasAddListener || this.hasRemoveListener || this.hasMoveListener) {
-      this.beforeStructure = this.getStructure();
+    if (
+      this.#hasAddListener || this.#hasRemoveListener || this.#hasMoveListener
+    ) {
+      this.#beforeStructure = this.#getStructure();
     } else {
-      this.beforeStructure = null;
+      this.#beforeStructure = null;
     }
   }
 
-  /**
-   * Compares the structure of the list after a change to its previous structure and notifies
-   * any add / move / remove listener. Won't do anything if no listeners are attached.
-   */
-  private afterChange(): void {
-    if (this.beforeStructure === null) {
+  #afterChange(): void {
+    if (this.#beforeStructure === null) {
       return;
     }
 
-    const after = this.getStructure();
-    const before = this.beforeStructure;
+    const after = this.#getStructure();
+    const before = this.#beforeStructure;
     let entry;
     let i;
 
-    if (this.hasRemoveListener) {
+    if (this.#hasRemoveListener) {
       for (entry in before) {
         for (i = 0; i < before[entry].length; i++) {
           if (after[entry] === undefined || after[entry][i] === undefined) {
@@ -308,7 +242,7 @@ export class List extends Emitter {
       }
     }
 
-    if (this.hasAddListener || this.hasMoveListener) {
+    if (this.#hasAddListener || this.#hasMoveListener) {
       for (entry in after) {
         if (before[entry] === undefined) {
           for (i = 0; i < after[entry].length; i++) {
@@ -329,17 +263,7 @@ export class List extends Emitter {
     }
   }
 
-  /**
-   * Iterates through the list and creates a map with the entry as a key
-   * and an array of its position(s) within the list as a value, e.g.
-   *
-   * {
-   *   'recordA': [ 0, 3 ],
-   *   'recordB': [ 1 ],
-   *   'recordC': [ 2 ]
-   * }
-   */
-  private getStructure(): any {
+  #getStructure(): any {
     const structure: any = {};
     let i;
     const entries = this.getEntries();
@@ -355,11 +279,11 @@ export class List extends Emitter {
     return structure;
   }
 
-  private destroy() {
-    for (let i = 0; i < this.subscriptions.length; i++) {
-      this.record.unsubscribe(this.subscriptions[i], this);
+  #destroy() {
+    for (let i = 0; i < this.#subscriptions.length; i++) {
+      this.#record.unsubscribe(this.#subscriptions[i], this);
     }
-    this.wrappedFunctions.clear();
-    this.record.removeContext(this);
+    this.#wrappedFunctions.clear();
+    this.#record.removeContext(this);
   }
 }
